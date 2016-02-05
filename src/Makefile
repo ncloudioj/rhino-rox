@@ -18,8 +18,8 @@ clean:
 test: all
 	cd tests && ./run-test.sh
 
-rhino-rox: rr_main.o
-	$(CC) $(CFLAGS) -o $@ $<
+rhino-rox: rr_main.o rr_logging.o
+	$(CC) $(CFLAGS) -o $@ $^
 
 rr_main.o:
 	$(CC) $(CFLAGS) -c rr_main.c
