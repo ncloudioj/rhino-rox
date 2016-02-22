@@ -1,7 +1,6 @@
-#ifndef _RHINO_ROX_H
-#define _RHINO_ROX_H
+#ifndef _RR_RHINO_ROX_H
+#define _RR_RHINO_ROX_H
 
-#include "rr_ftmacro.h"
 
 #include <stdint.h>
 

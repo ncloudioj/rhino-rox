@@ -8,6 +8,6 @@ int main(int argc, char *argv[]) {
     UNUSED(argv);
 
     rr_debug("Rhino-Rox is climbing the big tree now...");
-    rr_log(LOG_DEBUG, "Rhino is %d years old golden snub-nosed monkey.", 12);
+    rr_log(RR_LOG_DEBUG, "Rhino is %d years old golden snub-nosed monkey.", 12);
     return 0;
 }

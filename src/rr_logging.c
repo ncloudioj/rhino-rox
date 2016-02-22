@@ -13,12 +13,12 @@ static const char *LOG_LEVEL[] ={
     "[CRITICAL]"
 };
 
-void rr_log(int level, const char *fmt, ...) { 
+void rr_log(int level, const char *fmt, ...) {
     va_list ap;
-    char msg[LOG_MAX_LEN];
+    char msg[RR_LOG_MAX_LEN];
 
     level &= 0xFF;
-    if (level > LOG_CRITICAL || level < LOG_DEBUG) return;
+    if (level > RR_LOG_CRITICAL || level < RR_LOG_DEBUG) return;
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
