@@ -1,4 +1,4 @@
-CC	= gcc
+CC	= cc
 W	= -W -Wall -W -Wbad-function-cast
 OPT = -std=c99 -O2 -g
 CFLAGS	= $(OPT) $(W) $(XCFLAGS)
@@ -19,7 +19,7 @@ test: all
 	cd tests && ./run-test.sh
 
 rhino-rox: rr_main.o rr_logging.o
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o rhino-rox rr_main.o rr_logging.o
 
 rr_main.o:
 	$(CC) $(CFLAGS) -c rr_main.c
