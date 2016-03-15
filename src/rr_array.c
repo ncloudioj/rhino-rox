@@ -1,4 +1,4 @@
-#include "array.h"
+#include "rr_array.h"
 
 #include <stdlib.h>
 
@@ -33,7 +33,7 @@ array_free(array_t *array) {
 }
 
 void *
-array_push(array_t * array) {
+array_push(array_t *array) {
     void *ret, *elm;
 
     if (array->nrest > 0) {
@@ -57,7 +57,7 @@ array_push(array_t * array) {
 }
 
 void *
-array_push_n(array_t * array, uint32_t n) {
+array_push_n(array_t *array, uint32_t n) {
     void *ret, *elm;
 
     if (n == 0) return NULL;
@@ -85,12 +85,12 @@ array_push_n(array_t * array, uint32_t n) {
 }
 
 uint32_t
-array_len(array_t * array) {
+array_len(array_t *array) {
     return array->nelm;
 }
 
 void *
-array_at(array_t * array, int i) {
+array_at(array_t *array, int i) {
 	if (i >= ARRAY_LEN(array) || (i < 0 && -i > ARRAY_LEN(array))) return NULL;
 	return i >= 0 ? ARRAY_AT(array, i): ARRAY_AT(array, ARRAY_LEN(array)+i);
 }
