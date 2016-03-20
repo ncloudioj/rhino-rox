@@ -4,7 +4,7 @@
 #define   RR_LOG_MAX_LEN    1024
 #define   RR_LOG_DEBUG      0
 #define   RR_LOG_INFO       1
-#define   RR_LOG_WARN       2
+#define   RR_LOG_WARNING    2
 #define   RR_LOG_ERROR      3
 #define   RR_LOG_CRITICAL   4
 
