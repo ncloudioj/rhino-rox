@@ -19,7 +19,8 @@ eventloop_t *el_loop_create(int size) {
     if ((el = malloc(sizeof(*el))) == NULL) goto err;
     el->events = malloc(sizeof(event_t)*size);
     el->fired = malloc(sizeof(fired_event_t)*size);
-    if (el->events == NULL || el->fired == NULL) goto err;
+    el->timers = minheap_create(1, sizeof(timer_t), timer_cmp, timer_cpy, timer_swp);
+    if (el->events == NULL || el->fired == NULL || el->timers == NULL) goto err;
     el->size = size;
     el->stop = 0;
     el->maxfd = -1;
@@ -32,6 +33,7 @@ err:
     if (el) {
         free(el->events);
         free(el->fired);
+        minheap_free(el->timers);
         free(el);
     }
     return NULL;
@@ -39,6 +41,7 @@ err:
 
 void el_loop_free(eventloop_t *el) {
     el_context_free(el);
+    minheap_free(el->timers);
     free(el->events);
     free(el->fired);
     free(el);

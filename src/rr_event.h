@@ -1,6 +1,8 @@
 #ifndef _RR_EVENT_H
 #define _RR_EVENT_H
 
+#include "rr_minheap.h"
+
 #define   RR_EV_OK      0
 #define   RR_EV_ERR     -1
 
@@ -11,6 +13,7 @@
 struct eventloop_t;
 
 typedef void ev_callback(struct eventloop_t *el, int fd, void *ud, int mask);
+typedef int timer_callback(struct eventloop_t *el, void *ud);
 
 /* Event context */
 typedef struct event_t {
@@ -26,12 +29,46 @@ typedef struct fired_event_t {
     int mask;
 } fired_event_t;
 
+/* Timer event */
+typedef struct timer_t {
+    long sec;                 /* fire timer at: second part */
+    long ms;                  /* fire timer at: millisecond part */
+    void *ud;                 /* user data */
+    timer_callback *timer_cb; /* timer callback */
+} timer_t;
+
+static inline void *timer_cpy(void *dst, const void *src) {
+    *(timer_t *) dst = *(const timer_t *) src;
+    return dst;
+}
+
+static inline int timer_cmp(const void *lv, const void *rv) {
+    const timer_t *l = (const timer_t *) lv;
+    const timer_t *r = (const timer_t *) rv;
+
+    if ((l->sec < r->sec) || (l->sec == r->sec && l->ms < r->ms))
+        return -1;
+    else if (l->sec == r->sec && l->ms == r->ms)
+        return 0;
+    else
+        return 1;
+}
+
+static inline void timer_swp(void *lv, void *rv) {
+    timer_t tmp;
+
+    tmp = *(timer_t *) lv;
+    *lv = *(timer_t *) rv;
+    *rv = tmp;
+}
+
 /* State of an event loop */
 typedef struct eventloop_t {
     int maxfd;            /* highest file descriptor currently registered */
     int size;             /* the capacity of the loop forfile descriptors */
     event_t *events;      /* registered events                            */
     fired_event_t *fired; /* fired events                                 */
+    minheap_t *timers;    /* timer events                                 */
     int stop;             /* flag for stopping the event loop             */
     void *context;        /* wrap the context for epoll, kqueue etc.      */
 } eventloop_t;
