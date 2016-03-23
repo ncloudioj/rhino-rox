@@ -1,6 +1,7 @@
 #include "rr_datetime.h"
 
 #include <sys/time.h>
+#include <stdbool.h>
 
 void rr_dt_now(long *sec, long *ms) {
     struct timeval tv;
@@ -10,7 +11,7 @@ void rr_dt_now(long *sec, long *ms) {
     *ms = tv.tv_usec/1000;
 }
 
-void rr_dt_until(long long delta, long *sec, long *ms) {
+void rr_dt_later(long long delta, long *sec, long *ms) {
     long now_sec, now_ms, utl_sec, utl_ms;
 
     rr_dt_now(&now_sec, &now_ms);
@@ -23,4 +24,14 @@ void rr_dt_until(long long delta, long *sec, long *ms) {
     
     *sec = utl_sec;
     *ms = utl_ms;
+}
+
+bool rr_dt_is_past(long sec, long ms) {
+    long now_sec, now_ms;
+
+    rr_dt_now(&now_sec, &now_ms);
+    if (now_sec > sec || (now_sec == sec && now_ms >= ms))
+        return true;
+    else
+        return false;
 }

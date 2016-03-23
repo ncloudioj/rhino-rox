@@ -19,6 +19,7 @@ struct rr_server_t server;
 
 
 static void handle_accept(eventloop_t *el, int fd, void *ud, int mask);
+static void free_client(rr_client_t *c);
 
 static void rr_server_shutdown(int sig) {
     server.shutdown = 1;
@@ -60,6 +61,10 @@ void rr_server_close(void) {
     }
 }
 
+static void process_user_input(rr_client_t *c) {
+
+}
+
 static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask) {
    rr_client_t *c = (rr_client_t *) ud;
 
@@ -69,53 +74,22 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
     UNUSED(mask);
 
     readlen = RR_NET_BUFSIZE;
-    /* If this is a multi bulk request, and we are processing a bulk reply
-     * that is large enough, try to maximize the probability that the query
-     * buffer contains exactly the SDS string representing the object, even
-     * at the risk of requiring more read(2) calls. This way the function
-     * processMultiBulkBuffer() can avoid copying buffers to create the
-     * Redis Object representing the argument. */
-    if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
-        && c->bulklen >= PROTO_MBULK_BIG_ARG)
-    {
-        int remaining = (unsigned)(c->bulklen+2)-sdslen(c->querybuf);
-
-        if (remaining < readlen) readlen = remaining;
-    }
-
-    qblen = sdslen(c->querybuf);
-    if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
-    c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
-    nread = read(fd, c->querybuf+qblen, readlen);
+    nread = read(fd, c->in->elm, readlen);
     if (nread == -1) {
         if (errno == EAGAIN) {
             return;
         } else {
-            serverLog(LL_VERBOSE, "Reading from client: %s",strerror(errno));
-            freeClient(c);
+            rr_log(RR_LOG_ERROR, "Reading from client: %s", strerror(errno));
+            free_client(c);
             return;
         }
     } else if (nread == 0) {
-        serverLog(LL_VERBOSE, "Client closed connection");
-        freeClient(c);
+        rr_log(RR_LOG_INFO, "Client closed connection");
+        free_client(c);
         return;
     }
 
-    sdsIncrLen(c->querybuf,nread);
-    c->lastinteraction = server.unixtime;
-    if (c->flags & CLIENT_MASTER) c->reploff += nread;
-    server.stat_net_input_bytes += nread;
-    if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
-        sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
-
-        bytes = sdscatrepr(bytes,c->querybuf,64);
-        serverLog(LL_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
-        sdsfree(ci);
-        sdsfree(bytes);
-        freeClient(c);
-        return;
-    }
-    processInputBuffer(c);
+    process_user_input(c);
 }
 
 static rr_client_t *create_client(int fd) {
@@ -133,8 +107,8 @@ static rr_client_t *create_client(int fd) {
     }
 
     c->fd = fd;
-    c->in = array_create(8, sizeof(char));
-    c->out = array_create(8, sizeof(char));
+    c->in = array_create(RR_NET_BUFSIZE, sizeof(char));
+    c->out = array_create(RR_NET_BUFSIZE, sizeof(char));
     if (c->in == NULL || c->out == NULL) goto error;
     c->flags = 0;
     if (fd != -1) listAddNodeTail(server.clients, c);

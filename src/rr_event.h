@@ -3,6 +3,8 @@
 
 #include "rr_minheap.h"
 
+#include <sys/time.h>
+
 #define   RR_EV_OK      0
 #define   RR_EV_ERR     -1
 
@@ -37,31 +39,6 @@ typedef struct timer_t {
     timer_callback *timer_cb; /* timer callback */
 } timer_t;
 
-static inline void *timer_cpy(void *dst, const void *src) {
-    *(timer_t *) dst = *(const timer_t *) src;
-    return dst;
-}
-
-static inline int timer_cmp(const void *lv, const void *rv) {
-    const timer_t *l = (const timer_t *) lv;
-    const timer_t *r = (const timer_t *) rv;
-
-    if ((l->sec < r->sec) || (l->sec == r->sec && l->ms < r->ms))
-        return -1;
-    else if (l->sec == r->sec && l->ms == r->ms)
-        return 0;
-    else
-        return 1;
-}
-
-static inline void timer_swp(void *lv, void *rv) {
-    timer_t tmp;
-
-    tmp = *(timer_t *) lv;
-    *lv = *(timer_t *) rv;
-    *rv = tmp;
-}
-
 /* State of an event loop */
 typedef struct eventloop_t {
     int maxfd;            /* highest file descriptor currently registered */
@@ -86,10 +63,19 @@ void el_loop_stop(eventloop_t *el);
 int el_loop_get_size(eventloop_t *el);
 
 /*
- * Poll and process all the fired events
+ * Poll and process all the fired file events
  * Returns the total number of events processed
  */
-int el_loop_poll(eventloop_t *el);
+int el_loop_poll(eventloop_t *el, struct timeval *tvp);
+
+/*
+ * Process all the timer
+ * Returns the total number of timers processed
+ */
+int el_timer_process(eventloop_t *el);
+
+/* Wrap up the file event loop and timer event processing */
+void el_main(eventloop_t *el);
 
 /*
  * Add a new event to event loop
@@ -108,7 +94,13 @@ void el_event_del(eventloop_t *el, int fd, int mask);
 /* Get the event mask for the given fd */
 int el_event_get(eventloop_t *el, int fd);
 
-/* wrap up the event loop */
-void el_main(eventloop_t *el);
+/*
+ * Add a timer event to event loop
+ * params:
+ *     proc: event callback
+ *     ud: user data
+ * return: RR_EV_OK or RR_EV_ERR
+ */
+int el_timer_add(eventloop_t *el, long long milliseconds, timer_callback *proc, void *ud);
 
 #endif
