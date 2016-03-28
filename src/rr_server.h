@@ -5,6 +5,7 @@
 #include "rr_event.h"
 #include "rr_array.h"
 #include "adlist.h"
+#include "sds.h"
 
 struct rr_server_t {
     char err[RR_NET_ERR_MAXLEN];    /* buffer for the error message */

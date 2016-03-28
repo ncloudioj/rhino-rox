@@ -1,5 +1,6 @@
 #include "rr_rhino_rox.h"
 #include "rr_logging.h"
+#include "jemalloc.h"
 #include "sds.h"
 
 #include <stdio.h>
@@ -7,6 +8,9 @@
 int main(int argc, char *argv[]) {
     UNUSED(argc);
     UNUSED(argv);
+
+    char *ss = je_malloc(10*sizeof(char));
+    je_free(ss);
 
     sds s = sdsnew("hello");
 
