@@ -1,19 +1,17 @@
 CC = cc
 W = -W -Wall
-OPT = -std=c99 -pedantic -O2 -g -ggdb
+OPT = -std=gnu99 -pedantic -O2 -g -ggdb
 CFLAGS = $(OPT) $(W) $(XCFLAGS)
 PREFIX ?= /usr/local
 PROGS = rhino-rox
 
-# sds
-SDS_INC = ../deps/sds
 # jemalloc 
 JEMALLOC_DIR = ../deps/jemalloc
 JEMALLOC_LIB = $(JEMALLOC_DIR)/lib/libjemalloc.a
 JEMALLOC_INC = $(JEMALLOC_DIR)/include/jemalloc
 
-CFLAGS+= -I$(JEMALLOC_INC) -I$(SDS_INC)
-DEPS_LIBS= $(JEMALLOC_LIB) -ldl
+CFLAGS+= -I$(JEMALLOC_INC)
+DEPS_LIBS= $(JEMALLOC_LIB) -ldl -pthread
 
 all: jemalloc
 	
@@ -31,7 +29,7 @@ $(JEMALLOC_DIR)/Makefile: | $(JEMALLOC_DIR)/autogen.sh
 jemalloc: $(JEMALLOC_LIB)
 
 update_deps:
-	rm -rf $(JEMALLOC_DIR) $(SDS_DIR) && git submodule update --init
+	rm -rf $(JEMALLOC_DIR) && git submodule update --init
 
 all: $(PROGS)
 
@@ -46,14 +44,8 @@ clean:
 test: all
 	cd tests && ./run-test.sh
 
-rhino-rox: rr_main.o rr_logging.o sds.o
+rhino-rox: rr_main.o rr_logging.o sds.o rr_malloc.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
-
-rr_main.o:
-	$(CC) $(CFLAGS) -c rr_main.c
-
-sds.o: ../deps/sds/sds.c
-	$(CC) $(CFLAGS) -c $<
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<

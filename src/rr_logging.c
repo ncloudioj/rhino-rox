@@ -32,8 +32,8 @@ void rr_log(int level, const char *fmt, ...) {
     fp = stdout;
     gettimeofday(&tv, NULL);
     // ISO 8601 formatted timestamp, e.g. "2016-02-05T16:36:48.649Z"
-    off = strftime(buf, sizeof(buf), "%FT%T.", localtime(&tv.tv_sec));
-    snprintf(buf+off, sizeof(buf)-off, "%03dZ", (int)tv.tv_usec/1000);
+    off = strftime(buf, sizeof(buf), "%F %T.", localtime(&tv.tv_sec));
+    snprintf(buf+off, sizeof(buf)-off, "%03d", (int)tv.tv_usec/1000);
     fprintf(fp, "%s %s %s\n", buf, LOG_LEVEL[level], msg);
     fflush(fp);
 }
