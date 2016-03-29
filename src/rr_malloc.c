@@ -47,8 +47,7 @@ void *rr_calloc(size_t size) {
     void *ptr = calloc(1, size);
 
     if (!ptr) rr_oom_handler(size);
-    size_t n = rr_malloc_size(ptr);
-    update_malloc_stat_alloc(n);
+    update_malloc_stat_alloc(rr_malloc_size(ptr));
     return ptr;
 }
 
@@ -86,7 +85,6 @@ size_t rr_get_used_memory(void) {
     ATOM_GET(&used_memory,size,&used_memory_mutex);
     return size;
 }
-
 
 void rr_set_oom_handler(void (*oom_handler)(size_t)) {
 	rr_oom_handler = oom_handler;

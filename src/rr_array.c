@@ -1,22 +1,20 @@
 #include "rr_array.h"
-
-#include <stdlib.h>
-
+#include "rr_malloc.h"
 
 array_t *
 array_create(uint32_t n, size_t s) {
     array_t *a;
     uint32_t initial_number; /* initial number of elements in array, 1 by default */
     
-    a = malloc(sizeof(array_t));
+    a = rr_malloc(sizeof(array_t));
     if (a == NULL) {
         return NULL;
     }
 
     initial_number = n==0 ? 1 : n;
-    a->elm = malloc(initial_number * s);
+    a->elm = rr_malloc(initial_number * s);
     if (a->elm == NULL) {
-    	free(a);
+    	rr_free(a);
     	return NULL;
     }
     a->nelm = 0;
@@ -28,8 +26,8 @@ array_create(uint32_t n, size_t s) {
 
 void
 array_free(array_t *array) {
-	free(array->elm);
-    free(array);
+	rr_free(array->elm);
+    rr_free(array);
 }
 
 void *
@@ -44,7 +42,7 @@ array_push(array_t *array) {
     }
 
     /* double array's size, if failed, return NULL */
-    if ((elm=realloc(array->elm, 2*array->size*array->nelm)) == NULL) {
+    if ((elm=rr_realloc(array->elm, 2*array->size*array->nelm)) == NULL) {
     	return NULL;
     } else {
         array->elm = elm;
@@ -72,7 +70,7 @@ array_push_n(array_t *array, uint32_t n) {
     /* expand array's size, if failed, return NULL */
     size_t nslots;
     nslots = (2*array->nelm > n) ? 2*array->nelm: array->nelm+array->nrest+n;
-    if ((elm=realloc(array->elm, nslots*array->size)) == NULL) {
+    if ((elm=rr_realloc(array->elm, nslots*array->size)) == NULL) {
     	return NULL;
     } else {
         array->elm = elm;

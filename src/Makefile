@@ -1,7 +1,8 @@
 CC = cc
 W = -W -Wall
-OPT = -std=gnu99 -pedantic -O2 -g -ggdb
+OPT = -std=c99 -pedantic -O2 -g -ggdb
 CFLAGS = $(OPT) $(W) $(XCFLAGS)
+UNAME_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 PREFIX ?= /usr/local
 PROGS = rhino-rox
 
@@ -10,8 +11,11 @@ JEMALLOC_DIR = ../deps/jemalloc
 JEMALLOC_LIB = $(JEMALLOC_DIR)/lib/libjemalloc.a
 JEMALLOC_INC = $(JEMALLOC_DIR)/include/jemalloc
 
-CFLAGS+= -I$(JEMALLOC_INC)
-DEPS_LIBS= $(JEMALLOC_LIB) -ldl -pthread
+CFLAGS += -I$(JEMALLOC_INC)
+DEPS_LIBS = $(JEMALLOC_LIB) -ldl
+ifeq ($(UNAME_S),linux)
+	DEPS_LIBS+= -pthread
+endif
 
 all: jemalloc
 	

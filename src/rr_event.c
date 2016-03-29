@@ -1,6 +1,7 @@
 #include "rr_event.h"
 #include "rr_datetime.h"
 #include "rr_logging.h"
+#include "rr_malloc.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -45,9 +46,9 @@ eventloop_t *el_loop_create(int size) {
     eventloop_t *el;
     int i;
 
-    if ((el = malloc(sizeof(*el))) == NULL) goto err;
-    el->events = malloc(sizeof(event_t)*size);
-    el->fired = malloc(sizeof(fired_event_t)*size);
+    if ((el = rr_malloc(sizeof(*el))) == NULL) goto err;
+    el->events = rr_malloc(sizeof(event_t)*size);
+    el->fired = rr_malloc(sizeof(fired_event_t)*size);
     el->timers = minheap_create(1, sizeof(timer_t), timer_cmp, timer_cpy, timer_swp);
     if (el->events == NULL || el->fired == NULL || el->timers == NULL) goto err;
     el->size = size;
@@ -60,10 +61,10 @@ eventloop_t *el_loop_create(int size) {
 
 err:
     if (el) {
-        free(el->events);
-        free(el->fired);
+        rr_free(el->events);
+        rr_free(el->fired);
         minheap_free(el->timers);
-        free(el);
+        rr_free(el);
     }
     return NULL;
 }
@@ -71,9 +72,9 @@ err:
 void el_loop_free(eventloop_t *el) {
     el_context_free(el);
     minheap_free(el->timers);
-    free(el->events);
-    free(el->fired);
-    free(el);
+    rr_free(el->events);
+    rr_free(el->fired);
+    rr_free(el);
 }
 
 int el_loop_get_size(eventloop_t *el) {

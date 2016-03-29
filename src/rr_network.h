@@ -1,6 +1,8 @@
 #ifndef _RR_NETWORK_H
 #define _RR_NETWORK_H
 
+#include <stddef.h>
+
 #define   RR_NET_OK       0
 #define   RR_NET_ERR      -1
 

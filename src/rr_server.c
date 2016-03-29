@@ -4,6 +4,7 @@
 #include "rr_logging.h"
 #include "rr_network.h"
 #include "rr_server.h"
+#include "rr_malloc.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -93,7 +94,7 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
 }
 
 static rr_client_t *create_client(int fd) {
-    rr_client_t *c = malloc(sizeof(rr_client_t));
+    rr_client_t *c = rr_malloc(sizeof(rr_client_t));
     if (c == NULL) {
         rr_log(RR_LOG_CRITICAL, "Error creating a new client: oom");
         return NULL;
@@ -114,7 +115,7 @@ static rr_client_t *create_client(int fd) {
     if (fd != -1) listAddNodeTail(server.clients, c);
     return c;
 error:
-    free(c);
+    rr_free(c);
     return NULL;
 }
 
@@ -137,7 +138,7 @@ static void free_client(rr_client_t *c) {
     unlink_client(c);
     array_free(c->in);
     array_free(c->out);
-    free(c);
+    rr_free(c);
 }
 
 static void add_client(int fd, int flags, char *ip) {

@@ -1,6 +1,5 @@
 #include "rr_minheap.h"
-
-#include <stdlib.h>
+#include "rr_malloc.h"
 
 static void shiftdown(minheap_t *heap, int start, int at);
 static void heapify(minheap_t *heap, int start);
@@ -10,7 +9,7 @@ struct minheap_t *
 minheap_create(uint32_t n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
     minheap_t *heap;
 
-    heap = malloc(sizeof(minheap_t));
+    heap = rr_malloc(sizeof(minheap_t));
     if (heap == NULL) return NULL;
     heap->comp = pfcmp;
     heap->cpy = pfcpy;
@@ -18,7 +17,7 @@ minheap_create(uint32_t n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
     heap->len = 0;
     heap->array = array_create(n, size);
     if (heap->array == NULL) {
-        free(heap);
+        rr_free(heap);
         return NULL;
     }
     return heap;
@@ -27,7 +26,7 @@ minheap_create(uint32_t n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
 void
 minheap_free(minheap_t *heap) {
     array_free(heap->array);
-    free(heap);
+    rr_free(heap);
 }
 
 int

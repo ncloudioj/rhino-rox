@@ -9,18 +9,18 @@ typedef struct el_context_t {
 } el_context_t;
 
 static int el_context_create(eventloop_t *el) {
-    el_context_t *context = malloc(sizeof(el_context_t));
+    el_context_t *context = rr_malloc(sizeof(el_context_t));
 
     if (!context) return RR_EV_ERR;
-    context->events = malloc(sizeof(struct kevent)*el->size);
+    context->events = rr_malloc(sizeof(struct kevent)*el->size);
     if (!context->events) {
-        free(context);
+        rr_free(context);
         return RR_EV_ERR;
     }
     context->kqfd = kqueue();
     if (context->kqfd == -1) {
-        free(context->events);
-        free(context);
+        rr_free(context->events);
+        rr_free(context);
         return RR_EV_ERR;
     }
     el->context = context;
@@ -31,8 +31,8 @@ static void el_context_free(eventloop_t *el) {
     el_context_t *context = el->context;
 
     close(context->kqfd);
-    free(context->events);
-    free(context);
+    rr_free(context->events);
+    rr_free(context);
 }
 
 static int el_context_add(eventloop_t *el, int fd, int mask) {

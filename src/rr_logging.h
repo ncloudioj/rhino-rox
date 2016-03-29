@@ -11,7 +11,8 @@
 #ifdef NDEBUG
 #define rr_debug(fmt, ...)
 #else
-#define rr_debug(fmt, ...) fprintf(stderr, "[DEBUG] %s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define rr_debug(fmt, ...) \
+	fprintf(stderr, "[DEBUG] %s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #endif
 
 void rr_log(int level, const char *fmt, ...);
