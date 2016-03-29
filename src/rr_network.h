@@ -10,7 +10,6 @@
 #define   RR_NET_BACKLOG      512
 #define   RR_NET_MAXACCEPT    1000
 #define   RR_NET_MAXIPLEN     46
-#define   RR_NET_BUFSIZE      (1024 * 4)
 
 int rr_net_nonblock(char *err, int fd);
 int rr_net_keepalive(char *err, int fd);

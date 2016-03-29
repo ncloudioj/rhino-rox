@@ -16,6 +16,7 @@ struct eventloop_t;
 
 typedef void ev_callback(struct eventloop_t *el, int fd, void *ud, int mask);
 typedef int timer_callback(struct eventloop_t *el, void *ud);
+typedef void before_polling_callback(struct eventloop_t *el);
 
 /* Event context */
 typedef struct event_t {
@@ -41,13 +42,14 @@ typedef struct timer_t {
 
 /* State of an event loop */
 typedef struct eventloop_t {
-    int maxfd;            /* highest file descriptor currently registered */
-    int size;             /* the capacity of the loop forfile descriptors */
-    event_t *events;      /* registered events                            */
-    fired_event_t *fired; /* fired events                                 */
-    minheap_t *timers;    /* timer events                                 */
-    int stop;             /* flag for stopping the event loop             */
-    void *context;        /* wrap the context for epoll, kqueue etc.      */
+    int maxfd;                              /* highest file descriptor currently registered */
+    int size;                               /* the capacity of the loop forfile descriptors */
+    event_t *events;                        /* registered events                            */
+    fired_event_t *fired;                   /* fired events                                 */
+    minheap_t *timers;                      /* timer events                                 */
+    int stop;                               /* flag for stopping the event loop             */
+    void *context;                          /* wrap the context for epoll, kqueue etc.      */
+    before_polling_callback *before_polling;/* callback fucntion which gets called before polling */
 } eventloop_t;
 
 /* Create a event loop with the given size */
@@ -67,6 +69,8 @@ int el_loop_get_size(eventloop_t *el);
  * Returns the total number of events processed
  */
 int el_loop_poll(eventloop_t *el, struct timeval *tvp);
+
+void el_loop_set_before_polling(eventloop_t *el, before_polling_callback *callback);
 
 /*
  * Process all the timer

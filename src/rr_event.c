@@ -54,6 +54,7 @@ eventloop_t *el_loop_create(int size) {
     el->size = size;
     el->stop = 0;
     el->maxfd = -1;
+    el->before_polling = NULL;
     if (el_context_create(el) == -1) goto err;
     for (i = 0; i < size; i++)
         el->events[i].mask = RR_EV_NONE;
@@ -75,6 +76,10 @@ void el_loop_free(eventloop_t *el) {
     rr_free(el->events);
     rr_free(el->fired);
     rr_free(el);
+}
+
+void el_loop_set_before_polling(eventloop_t *el, before_polling_callback *callback) {
+    el->before_polling = callback;
 }
 
 int el_loop_get_size(eventloop_t *el) {
@@ -185,7 +190,7 @@ int el_timer_process(eventloop_t *el) {
     return processed;
 }
 
-static bool el_pool_timeout(eventloop_t *el, struct timeval *tvp) {
+static bool el_poll_timeout(eventloop_t *el, struct timeval *tvp) {
     long now_sec, now_ms;
 
     if (!minheap_len(el->timers)) return false;
@@ -207,16 +212,17 @@ static bool el_pool_timeout(eventloop_t *el, struct timeval *tvp) {
 
 void el_main(eventloop_t *el) {
     struct timeval tvp, *tv;
-    int nevent, ntimer;
+    int nfevents, ntimer;
 
     while (!el->stop) {
-        if (el_pool_timeout(el, &tvp))
-            tv = &tvp;
-        else
-            tv = NULL; /* wait forever */
-        nevent = el_loop_poll(el, tv);
-        rr_log(RR_LOG_INFO, "Processed %d file events.", nevent);
+        if (el->before_polling != NULL)
+            el->before_polling(el);
+
+        tv = el_poll_timeout(el, &tvp) ? &tvp : NULL;
+        nfevents = el_loop_poll(el, tv);
+
         ntimer = el_timer_process(el);
-        rr_log(RR_LOG_INFO, "Processed %d timer events.", ntimer);
+        rr_log(RR_LOG_INFO, "Processed %d events, file events: %d, timer: %d",
+            nfevents+ntimer, nfevents, ntimer);
     }
 }

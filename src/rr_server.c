@@ -18,8 +18,10 @@
 
 struct rr_server_t server;
 
-
+static void server_cron(eventloop_t *el);
 static void handle_accept(eventloop_t *el, int fd, void *ud, int mask);
+static rr_client_t *create_client(int fd);
+static void add_client(int fd, int flags, char *ip);
 static void free_client(rr_client_t *c);
 
 static void rr_server_shutdown(int sig) {
@@ -42,13 +44,19 @@ static void rr_server_signal(void) {
 
 void rr_server_init(void) {
     server.shutdown = 0;
-    server.size = 10000;
-    server.nrejected = 0;
+    server.max_size = 10000;
+    server.served = 0;
+    server.rejected = 0;
     rr_server_signal();
-    if ((server.el = el_loop_create(server.size)) == NULL) goto error;
+    if ((server.el = el_loop_create(server.max_size)) == NULL) goto error;
     if ((server.lpfd = rr_net_tcpserver(server.err, 6000, NULL, AF_INET, RR_NET_BACKLOG)) == RR_ERROR) goto error;
     if (rr_net_nonblock(server.err, server.lpfd) == RR_ERROR) goto error;
     if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL) == RR_EV_ERR) goto error;
+    el_loop_set_before_polling(server.el, server_cron);
+    server.client_max_query_len = PROTO_QUERY_MAX_LEN;
+    server.clients = listCreate();
+    server.clients_with_pending_writes = listCreate();
+    server.clients_to_close = listCreate();
     return;
 error:
     rr_log(RR_LOG_CRITICAL, server.err);
@@ -62,6 +70,10 @@ void rr_server_close(void) {
     }
 }
 
+static void server_cron(eventloop_t *el) {
+
+}
+
 static void process_user_input(rr_client_t *c) {
 
 }
@@ -70,12 +82,14 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
    rr_client_t *c = (rr_client_t *) ud;
 
     int nread, readlen;
-    size_t qblen;
+    int qlen;
     UNUSED(el);
     UNUSED(mask);
 
-    readlen = RR_NET_BUFSIZE;
-    nread = read(fd, c->in->elm, readlen);
+    qlen = sdslen(c->query);
+    readlen = PROTO_IOBUF_LEN;
+    c->query = sdsMakeRoomFor(c->query, readlen);
+    nread = read(fd, c->query+qlen, readlen);
     if (nread == -1) {
         if (errno == EAGAIN) {
             return;
@@ -86,6 +100,13 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
         }
     } else if (nread == 0) {
         rr_log(RR_LOG_INFO, "Client closed connection");
+        free_client(c);
+        return;
+    }
+    sdsIncrLen(c->query, nread);
+
+    if (sdslen(c->query) > server.client_max_query_len) {
+        rr_log(RR_LOG_WARNING, "Closing client that reached max query buffer length.");
         free_client(c);
         return;
     }
@@ -108,9 +129,8 @@ static rr_client_t *create_client(int fd) {
     }
 
     c->fd = fd;
-    c->in = array_create(RR_NET_BUFSIZE, sizeof(char));
-    c->out = array_create(RR_NET_BUFSIZE, sizeof(char));
-    if (c->in == NULL || c->out == NULL) goto error;
+    c->query = sdsempty();
+    c->reply = listCreate();
     c->flags = 0;
     if (fd != -1) listAddNodeTail(server.clients, c);
     return c;
@@ -136,8 +156,8 @@ static void unlink_client(rr_client_t *c) {
 
 static void free_client(rr_client_t *c) {
     unlink_client(c);
-    array_free(c->in);
-    array_free(c->out);
+    sdsfree(c->query);
+    listRelease(c->reply);
     rr_free(c);
 }
 
@@ -154,19 +174,19 @@ static void add_client(int fd, int flags, char *ip) {
      * connection. Note that we create the client instead to check before
      * for this condition, since now the socket is already set in non-blocking
      * mode and we can send an error for free using the Kernel I/O */
-    if (listLength(server.clients) > server.size) {
+    if (listLength(server.clients) > server.max_size) {
         char *err = "-ERR max number of clients reached\r\n";
 
         /* That's a best effort error message, don't check write errors */
         if (write(c->fd, err, strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
-        server.nrejected++;
+        server.rejected++;
         free_client(c);
         return;
     }
 
-    server.nserved++;
+    server.served++;
     c->flags |= flags;
 }
 
@@ -191,5 +211,6 @@ static void handle_accept(eventloop_t *el, int fd, void *ud, int mask) {
 
 int main(int argc, char *argv[]) {
     rr_server_init();
+    el_main(server.el);
     rr_server_close();
 }
