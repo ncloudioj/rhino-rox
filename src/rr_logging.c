@@ -13,12 +13,22 @@ static const char *LOG_LEVEL[] ={
     "[CRITICAL]"
 };
 
+static int log_level = RR_LOG_INFO;
+
+int rr_log_set_log_level(int level) {
+    int current = log_level;
+
+    log_level = level;
+    return current;
+}
+
 void rr_log(int level, const char *fmt, ...) {
     va_list ap;
     char msg[RR_LOG_MAX_LEN];
 
     level &= 0xFF;
-    if (level > RR_LOG_CRITICAL || level < RR_LOG_DEBUG) return;
+    if (level > RR_LOG_CRITICAL || level < RR_LOG_DEBUG || level < log_level)
+        return;
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
@@ -31,7 +41,6 @@ void rr_log(int level, const char *fmt, ...) {
 
     fp = stdout;
     gettimeofday(&tv, NULL);
-    // ISO 8601 formatted timestamp, e.g. "2016-02-05T16:36:48.649Z"
     off = strftime(buf, sizeof(buf), "%F %T.", localtime(&tv.tv_sec));
     snprintf(buf+off, sizeof(buf)-off, "%03d", (int)tv.tv_usec/1000);
     fprintf(fp, "%s %s %s\n", buf, LOG_LEVEL[level], msg);

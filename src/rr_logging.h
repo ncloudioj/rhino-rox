@@ -16,5 +16,6 @@
 #endif
 
 void rr_log(int level, const char *fmt, ...);
+int rr_log_set_log_level(int level);
 
 #endif

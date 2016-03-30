@@ -58,6 +58,7 @@ void rr_server_init(void) {
     if (rr_net_nonblock(server.err, server.lpfd) == RR_ERROR) goto error;
     if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL) == RR_EV_ERR) goto error;
 
+    rr_log_set_log_level(RR_LOG_INFO);
     if (el_timer_add(server.el, 1, server_cron, NULL) == RR_EV_ERR) {
         rr_log(RR_LOG_CRITICAL, "Can't create event loop timers.");
         exit(1);
