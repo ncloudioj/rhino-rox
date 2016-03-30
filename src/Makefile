@@ -4,7 +4,7 @@ OPT = -std=c99 -pedantic -O2 -g -ggdb
 CFLAGS = $(OPT) $(W) $(XCFLAGS)
 UNAME_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 PREFIX ?= /usr/local
-PROGS = rhino-rox
+PROGS = rhino-rox t
 
 # jemalloc 
 JEMALLOC_DIR = ../deps/jemalloc
@@ -48,7 +48,11 @@ clean:
 test: all
 	cd tests && ./run-test.sh
 
-rhino-rox: rr_main.o rr_logging.o sds.o rr_malloc.o
+rhino-rox: rr_server.o rr_logging.o sds.o adlist.o rr_malloc.o rr_event.o rr_array.o \
+	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
+
+t: rr_main.o rr_logging.o sds.o rr_malloc.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
 
 %.o: %.c

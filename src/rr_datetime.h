@@ -8,7 +8,7 @@ void rr_dt_now(long *sec, long *ms);
 /*
  * Add a time delta (in milliseconds) to the current time
  */
-void rr_dt_later(long long delta, long *sec, long *ms);
+void rr_dt_expire(long long delta, long *sec, long *ms);
 
 /*
  * Compare the given time with current time

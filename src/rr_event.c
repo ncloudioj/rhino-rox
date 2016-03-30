@@ -161,10 +161,10 @@ int el_loop_poll(eventloop_t *el, struct timeval *tvp) {
 int el_timer_add(eventloop_t *el, long long milliseconds, timer_callback *proc, void *ud) {
     timer_t t;
 
-    rr_dt_later(milliseconds, &t.sec, &t.ms);
+    rr_dt_expire(milliseconds, &t.sec, &t.ms);
     t.timer_cb = proc;
     t.ud = ud;
-    if (!minheap_push(el->timers, &t)) return RR_EV_ERR;
+    if (minheap_push(el->timers, &t)) return RR_EV_ERR;
     return RR_EV_OK;
 }
 
@@ -180,7 +180,7 @@ int el_timer_process(eventloop_t *el) {
         long long millisecond = t->timer_cb(el, t->ud);
         /* if the timer is still active, push it back to heap */
         if (millisecond > 0) {
-            rr_dt_later(millisecond, &t->sec, &t->ms);
+            rr_dt_expire(millisecond, &t->sec, &t->ms);
             ret = minheap_push(el->timers, t);
             assert(!ret);
         }
@@ -190,7 +190,7 @@ int el_timer_process(eventloop_t *el) {
     return processed;
 }
 
-static bool el_poll_timeout(eventloop_t *el, struct timeval *tvp) {
+static bool el_poll_get_timeout(eventloop_t *el, struct timeval *tvp) {
     long now_sec, now_ms;
 
     if (!minheap_len(el->timers)) return false;
@@ -218,7 +218,7 @@ void el_main(eventloop_t *el) {
         if (el->before_polling != NULL)
             el->before_polling(el);
 
-        tv = el_poll_timeout(el, &tvp) ? &tvp : NULL;
+        tv = el_poll_get_timeout(el, &tvp) ? &tvp : NULL;
         nfevents = el_loop_poll(el, tv);
 
         ntimer = el_timer_process(el);

@@ -18,13 +18,15 @@
 
 struct rr_server_t server;
 
-static void server_cron(eventloop_t *el);
+static int server_cron(eventloop_t *el, void *ud);
+static void before_polling(eventloop_t *el);
 static void handle_accept(eventloop_t *el, int fd, void *ud, int mask);
-static rr_client_t *create_client(int fd);
 static void add_client(int fd, int flags, char *ip);
-static void free_client(rr_client_t *c);
+static void client_free_async(rr_client_t *c);
+static void handle_async_freed_clients(void);
 
 static void rr_server_shutdown(int sig) {
+    UNUSED(sig);
     server.shutdown = 1;
 }
 
@@ -44,15 +46,23 @@ static void rr_server_signal(void) {
 
 void rr_server_init(void) {
     server.shutdown = 0;
+    server.max_memory = 0;
     server.max_size = 10000;
+    server.hz = 2;
     server.served = 0;
     server.rejected = 0;
+    server.stats_memory_usage = 0;
     rr_server_signal();
     if ((server.el = el_loop_create(server.max_size)) == NULL) goto error;
     if ((server.lpfd = rr_net_tcpserver(server.err, 6000, NULL, AF_INET, RR_NET_BACKLOG)) == RR_ERROR) goto error;
     if (rr_net_nonblock(server.err, server.lpfd) == RR_ERROR) goto error;
     if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL) == RR_EV_ERR) goto error;
-    el_loop_set_before_polling(server.el, server_cron);
+
+    if (el_timer_add(server.el, 1, server_cron, NULL) == RR_EV_ERR) {
+        rr_log(RR_LOG_CRITICAL, "Can't create event loop timers.");
+        exit(1);
+    }
+    el_loop_set_before_polling(server.el, before_polling);
     server.client_max_query_len = PROTO_QUERY_MAX_LEN;
     server.clients = listCreate();
     server.clients_with_pending_writes = listCreate();
@@ -64,18 +74,125 @@ error:
 }
 
 void rr_server_close(void) {
+    el_loop_stop(server.el);
+    el_loop_free(server.el);
+}
+
+static void rr_server_close_listening_sockets() {
+    close(server.lpfd);
+}
+
+int rr_server_prepare_to_shutdown(void) {
+    rr_server_close_listening_sockets();
+    return RR_OK;
+}
+
+#define CLIENTS_CRON_MIN_ITERATIONS 5
+static void client_cron(void) {
+}
+
+static int server_cron(eventloop_t *el, void *ud) {
+    UNUSED(el);
+    UNUSED(ud);
+
     if (server.shutdown) {
-        el_loop_stop(server.el);
-        el_loop_free(server.el);
+        if (rr_server_prepare_to_shutdown() == RR_OK) exit(0);
+        rr_log(RR_LOG_INFO,
+            "SIGTERM received but errors trying to shut down the server");
+        server.shutdown = 0;
+    }
+
+    handle_async_freed_clients();
+
+    client_cron();
+
+    server.stats_memory_usage = rr_get_used_memory();
+
+    return 1000/server.hz;
+}
+
+static void handle_async_freed_clients(void) {
+    while (listLength(server.clients_to_close)) {
+        listNode *ln = listFirst(server.clients_to_close);
+        rr_client_t *c = listNodeValue(ln);
+        c->flags &= ~CLIENT_CLOSE_ASAP;
+        rr_client_free(c);
+        listDelNode(server.clients_to_close, ln);
     }
 }
 
-static void server_cron(eventloop_t *el) {
+static void client_free_async(rr_client_t *c) {
+    if (c->flags & CLIENT_CLOSE_ASAP) return;
+    c->flags |= CLIENT_CLOSE_ASAP;
+    listAddNodeTail(server.clients_to_close,c);
+}
 
+static int handle_clients_with_pending_writes() {
+    listIter li;
+    listNode *ln;
+    int processed = listLength(server.clients_with_pending_writes);
+
+    listRewind(server.clients_with_pending_writes, &li);
+    while((ln = listNext(&li))) {
+        rr_client_t *c = listNodeValue(ln);
+        c->flags &= ~CLIENT_PENDING_WRITE;
+        listDelNode(server.clients_with_pending_writes, ln);
+
+        /* Try to write buffers to the client socket. */
+        if (reply_write_to_client(c->fd, c, 0) == RR_ERROR) continue;
+
+        /* If there is nothing left, do nothing. Otherwise install
+         * the write handler. */
+        if (client_has_pending_replies(c) &&
+            el_event_add(server.el, c->fd, RR_EV_WRITE, reply_write_callback, c)
+            == RR_EV_ERR) {
+            client_free_async(c);
+        }
+    }
+    return processed;
+}
+
+static void before_polling(eventloop_t *el) {
+    UNUSED(el);
+    handle_clients_with_pending_writes();
+}
+
+/* It does nothing except echoing the query now */
+static int process_inline_input(rr_client_t *c) {
+    char *newline;
+    sds aux;
+    size_t querylen;
+
+    /* Search for end of line */
+    newline = strchr(c->query, '\n');
+
+    /* Nothing to do without a \r\n */
+    if (newline == NULL) {
+        if (sdslen(c->query) > PROTO_INLINE_MAX_LEN) {
+            reply_add_err(c, "Protocol error: too big inline request");
+        }
+        return RR_ERROR;
+    }
+
+    /* Handle the \r\n case. */
+    if (newline && newline != c->query && *(newline-1) == '\r')
+        newline--;
+
+    /* Split the input buffer up to the \r\n */
+    querylen = newline - c->query;
+    aux = sdsnewlen(c->query, querylen);
+    reply_add_sds(c, aux);
+
+    /* Slice the query buffer to delete the processed line */
+    sdsrange(c->query, querylen+2, -1);
+
+    return RR_OK;
 }
 
 static void process_user_input(rr_client_t *c) {
-
+    while (sdslen(c->query)) {
+       if (process_inline_input(c) != RR_OK) break;
+    }
 }
 
 static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask) {
@@ -95,26 +212,36 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
             return;
         } else {
             rr_log(RR_LOG_ERROR, "Reading from client: %s", strerror(errno));
-            free_client(c);
+            rr_client_free(c);
             return;
         }
     } else if (nread == 0) {
         rr_log(RR_LOG_INFO, "Client closed connection");
-        free_client(c);
+        rr_client_free(c);
         return;
     }
     sdsIncrLen(c->query, nread);
 
     if (sdslen(c->query) > server.client_max_query_len) {
         rr_log(RR_LOG_WARNING, "Closing client that reached max query buffer length.");
-        free_client(c);
+        rr_client_free(c);
         return;
     }
 
     process_user_input(c);
 }
 
-static rr_client_t *create_client(int fd) {
+
+/* Client.reply list dup and free methods */
+static void *list_reply_dup(void *val) {
+    return sdsdup(val);
+}
+
+static void list_reply_free(void *val) {
+    sdsfree(val);
+}
+
+rr_client_t *rr_client_create(int fd) {
     rr_client_t *c = rr_malloc(sizeof(rr_client_t));
     if (c == NULL) {
         rr_log(RR_LOG_CRITICAL, "Error creating a new client: oom");
@@ -130,7 +257,11 @@ static rr_client_t *create_client(int fd) {
 
     c->fd = fd;
     c->query = sdsempty();
+    c->replied_len = 0;
+    c->buf_sent_len = 0;
     c->reply = listCreate();
+    listSetFreeMethod(c->reply, list_reply_free);
+    listSetDupMethod(c->reply, list_reply_dup);
     c->flags = 0;
     if (fd != -1) listAddNodeTail(server.clients, c);
     return c;
@@ -154,7 +285,7 @@ static void unlink_client(rr_client_t *c) {
     }
 }
 
-static void free_client(rr_client_t *c) {
+void rr_client_free(rr_client_t *c) {
     unlink_client(c);
     sdsfree(c->query);
     listRelease(c->reply);
@@ -162,8 +293,10 @@ static void free_client(rr_client_t *c) {
 }
 
 static void add_client(int fd, int flags, char *ip) {
+    UNUSED(ip);
+
     rr_client_t *c;
-    if ((c = create_client(fd)) == NULL) {
+    if ((c = rr_client_create(fd)) == NULL) {
         rr_log(RR_LOG_WARNING,
             "Error registering fd event for the new client: %s (fd=%d)",
             strerror(errno), fd);
@@ -182,7 +315,7 @@ static void add_client(int fd, int flags, char *ip) {
             /* Nothing to do, Just to avoid the warning... */
         }
         server.rejected++;
-        free_client(c);
+        rr_client_free(c);
         return;
     }
 
@@ -210,6 +343,9 @@ static void handle_accept(eventloop_t *el, int fd, void *ud, int mask) {
 }
 
 int main(int argc, char *argv[]) {
+    UNUSED(argc);
+    UNUSED(argv);
+
     rr_server_init();
     el_main(server.el);
     rr_server_close();

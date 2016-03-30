@@ -89,6 +89,6 @@ array_len(array_t *array) {
 
 void *
 array_at(array_t *array, int i) {
-	if (i >= ARRAY_LEN(array) || (i < 0 && -i > ARRAY_LEN(array))) return NULL;
+	if (i >= (int)ARRAY_LEN(array) || (i < 0 && -i > (int)ARRAY_LEN(array))) return NULL;
 	return i >= 0 ? ARRAY_AT(array, i): ARRAY_AT(array, ARRAY_LEN(array)+i);
 }
