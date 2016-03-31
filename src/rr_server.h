@@ -15,6 +15,7 @@
 #define PROTO_INLINE_MAX_LEN (1024*64) /* max length of inline reads */
 
 #define SERVER_CRON_MAX_FREQUENCY (1000) /* max frequency of server cron */
+#define SERVER_RESERVED_FDS 32           /* number of reserved file descriptors */
 
 #define CLIENT_PENDING_WRITE (1<<1) /* Client has output to send but a write
                                        handler is yet not installed. */
@@ -26,7 +27,7 @@
 struct rr_server_t {
     char err[RR_NET_ERR_MAXLEN];       /* buffer for the error message */
     eventloop_t *el;                   /* event loop */
-    unsigned int max_size;             /* max client size */
+    unsigned int max_clients;          /* max client size */
     unsigned int rejected;             /* counter for rejected clients */
     unsigned int served;               /* counter for served clients */
     unsigned long long max_memory;     /* Max number of memory bytes to use */
@@ -54,6 +55,7 @@ typedef struct rr_client_t {
 struct rr_configuration;
 void rr_server_init(struct rr_configuration *cfg);
 void rr_server_close(void);
+void rr_server_adjust_max_clients(void);
 int rr_server_prepare_to_shutdown(void);
 
 rr_client_t *rr_client_create(int fd);

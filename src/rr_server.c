@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/resource.h>
 
 struct rr_server_t server;
 
@@ -49,17 +50,21 @@ static void rr_server_signal(void) {
 void rr_server_init(rr_configuration *cfg) {
     server.shutdown = 0;
     server.max_memory = cfg->max_memory;
-    server.max_size = cfg->max_clients;
+    server.max_clients = cfg->max_clients;
+    rr_server_adjust_max_clients();
     server.hz = cfg->cron_frequency;
     server.served = 0;
     server.rejected = 0;
     server.stats_memory_usage = 0;
     rr_server_signal();
-    if ((server.el = el_loop_create(server.max_size)) == NULL) goto error;
-    if ((server.lpfd = rr_net_tcpserver(server.err, cfg->port, cfg->bind, AF_INET, cfg->tcp_backlog))
-         == RR_ERROR) goto error;
+    if ((server.el = el_loop_create(server.max_clients)) == NULL) goto error;
+    server.lpfd = rr_net_tcpserver(
+            server.err, cfg->port, cfg->bind, AF_INET, cfg->tcp_backlog);
+    if (server.lpfd == RR_EV_ERR) goto error;
     if (rr_net_nonblock(server.err, server.lpfd) == RR_ERROR) goto error;
-    if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL) == RR_EV_ERR) goto error;
+    if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL)
+          == RR_EV_ERR)
+        goto error;
 
     rr_log_set_log_level(cfg->log_level);
     if (el_timer_add(server.el, 1, server_cron, NULL) == RR_EV_ERR) {
@@ -89,6 +94,79 @@ static void rr_server_close_listening_sockets() {
 int rr_server_prepare_to_shutdown(void) {
     rr_server_close_listening_sockets();
     return RR_OK;
+}
+
+void rr_server_adjust_max_clients(void) {
+    rlim_t maxfiles = server.max_clients + SERVER_RESERVED_FDS;
+    struct rlimit limit;
+
+    if (getrlimit(RLIMIT_NOFILE, &limit) == -1) {
+        rr_log(RR_LOG_WARNING,
+            "Fail to obtain the current NOFILE limit (%s), "
+            "assuming 1024 and setting the max clients configuration accordingly.",
+            strerror(errno));
+        server.max_clients = 1024 - SERVER_RESERVED_FDS;
+    } else {
+        rlim_t oldlimit = limit.rlim_cur;
+
+        /* Set the max number of files if the current limit is not enough
+         * for our needs. */
+        if (oldlimit < maxfiles) {
+            rlim_t bestlimit;
+            int setrlimit_error = 0;
+
+            /* Try to set the file limit to match 'maxfiles' or at least
+             * to the higher value supported less than maxfiles. */
+            bestlimit = maxfiles;
+            while(bestlimit > oldlimit) {
+                rlim_t decr_step = 16;
+
+                limit.rlim_cur = bestlimit;
+                limit.rlim_max = bestlimit;
+                if (setrlimit(RLIMIT_NOFILE, &limit) != -1) break;
+                setrlimit_error = errno;
+
+                /* We failed to set file limit to 'bestlimit'. Try with a
+                 * smaller limit decrementing by a few FDs per iteration. */
+                if (bestlimit < decr_step) break;
+                bestlimit -= decr_step;
+            }
+
+            /* Assume that the limit we get initially is still valid if
+             * our last try was even lower. */
+            if (bestlimit < oldlimit) bestlimit = oldlimit;
+
+            if (bestlimit < maxfiles) {
+                int old_maxclients = server.max_clients;
+                server.max_clients = bestlimit - SERVER_RESERVED_FDS;
+                if (server.max_clients < 1) {
+                    rr_log(RR_LOG_CRITICAL, "Your current 'ulimit -n' "
+                        "of %llu is not enough for the server to start. "
+                        "Please increase your open file limit to at least "
+                        "%llu. Exiting",
+                        (unsigned long long) oldlimit,
+                        (unsigned long long) maxfiles);
+                    exit(1);
+                }
+                rr_log(RR_LOG_WARNING, "You requested maxclients of %d "
+                    "requiring at least %llu max file descriptors",
+                    old_maxclients, (unsigned long long) maxfiles);
+                rr_log(RR_LOG_WARNING, "Server can't set maximum open files "
+                    "to %llu because of OS error: %s",
+                    (unsigned long long) maxfiles, strerror(setrlimit_error));
+                rr_log(RR_LOG_WARNING, "Current maximum open files is %llu. "
+                    "maxclients has been reduced to %d to compensate for "
+                    "low ulimit. "
+                    "If you need higher maxclients increase 'ulimit -n'",
+                    (unsigned long long) bestlimit, server.max_clients);
+            } else {
+                rr_log(RR_LOG_INFO, "Increased maximum number of open files "
+                    "to %llu (it was originally set to %llu)",
+                    (unsigned long long) maxfiles,
+                    (unsigned long long) oldlimit);
+            }
+        }
+    }
 }
 
 #define CLIENTS_CRON_MIN_ITERATIONS 5
@@ -311,7 +389,7 @@ static void add_client(int fd, int flags, char *ip) {
      * connection. Note that we create the client instead to check before
      * for this condition, since now the socket is already set in non-blocking
      * mode and we can send an error for free using the Kernel I/O */
-    if (listLength(server.clients) > server.max_size) {
+    if (listLength(server.clients) > server.max_clients) {
         char *err = "-ERR max number of clients reached\r\n";
 
         /* That's a best effort error message, don't check write errors */
