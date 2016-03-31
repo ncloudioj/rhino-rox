@@ -1,12 +1,15 @@
 CC = cc
+STD = -std=c99 -pedantic
 W = -W -Wall
-OPT = -std=c99 -pedantic -O2 -g -ggdb
-CFLAGS = $(OPT) $(W) $(XCFLAGS)
-UNAME_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+# OPT is Overwritable to disable the optimizations
+OPT ?= -O2
+DEBUG = -g -ggdb
+CFLAGS = $(STD) $(OPT) $(W) $(DEBUG)
+UNAME_S := $(shell sh -c 'uname -s 2>/dev/null || echo nope')
 PREFIX ?= /usr/local
 PROGS = rhino-rox
 
-# jemalloc 
+# jemalloc
 JEMALLOC_DIR = ../deps/jemalloc
 JEMALLOC_LIB = $(JEMALLOC_DIR)/lib/libjemalloc.a
 JEMALLOC_INC = $(JEMALLOC_DIR)/include/jemalloc
@@ -40,13 +43,17 @@ all: $(PROGS)
 install: $(PROGS)
 	for f in $(PROGS); do cp $$f $(PREFIX)/bin; done
 
-.PHONY: clean
+.PHONY: clean valgrind
 
 clean:
 	rm -rf $(PROGS) *.[ao] *.so
 
 test: all
 	cd tests && ./run-test.sh
+
+valgrind:
+	$(MAKE) OPT="-O0"
+	valgrind --leak-check=yes --log-file=valgrind.log ./rhino-rox
 
 rhino-rox: rr_server.o rr_logging.o sds.o adlist.o rr_malloc.o rr_event.o rr_array.o \
 	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o rr_config.o ini.o

@@ -118,7 +118,7 @@ static int handler(void *config,
         }
     } else if (MATCH("server", "max_memory")) {
         cfg->max_memory = memtoll(value, NULL);
-        if (cfg->cron_frequency < 0) {
+        if (cfg->max_memory < 0) {
             err = "Invalid value for max_memory";
             goto error;
         }
@@ -137,10 +137,6 @@ static int handler(void *config,
         }
     } else if (MATCH("network", "bind")) {
         cfg->bind = strdup(value);
-        if (cfg->port < 0 || cfg->port > 65535) {
-            err = "Invalid value for port";
-            goto error;
-        }
     } else if (MATCH("network", "tcp_backlog")) {
         cfg->tcp_backlog = atoi(value);
         if (cfg->port < 0) {

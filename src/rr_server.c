@@ -148,7 +148,7 @@ void rr_server_adjust_max_clients(void) {
                         (unsigned long long) maxfiles);
                     exit(1);
                 }
-                rr_log(RR_LOG_WARNING, "You requested maxclients of %d "
+                rr_log(RR_LOG_WARNING, "You requested max_clients of %d "
                     "requiring at least %llu max file descriptors",
                     old_maxclients, (unsigned long long) maxfiles);
                 rr_log(RR_LOG_WARNING, "Server can't set maximum open files "
