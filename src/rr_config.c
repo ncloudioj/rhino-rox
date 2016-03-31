@@ -129,6 +129,20 @@ static int handler(void *config,
             err = "Invalid value for log_level";
             goto error;
         }
+    } else if (MATCH("logging", "log_file")) {
+        cfg->log_file = strdup(value);
+        if (cfg->log_file[0] != '\0') {
+			FILE *fp;
+
+			fp = fopen(cfg->log_file, "a");
+			if (fp == NULL) {
+				snprintf(msg, sizeof(msg), "Failed to open log file \"%s\": %s",
+					cfg->log_file, strerror(errno));
+				err = msg;
+				goto error;
+			}
+			fclose(fp);
+        }
     } else if (MATCH("network", "port")) {
         cfg->port = atoi(value);
         if (cfg->port < 0 || cfg->port > 65535) {

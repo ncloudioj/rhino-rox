@@ -48,6 +48,9 @@ static void rr_server_signal(void) {
 }
 
 void rr_server_init(rr_configuration *cfg) {
+    rr_log_set_log_level(cfg->log_level);
+    rr_log_set_log_file(cfg->log_file);
+
     server.shutdown = 0;
     server.max_memory = cfg->max_memory;
     server.max_clients = cfg->max_clients;
@@ -66,7 +69,6 @@ void rr_server_init(rr_configuration *cfg) {
           == RR_EV_ERR)
         goto error;
 
-    rr_log_set_log_level(cfg->log_level);
     if (el_timer_add(server.el, 1, server_cron, NULL) == RR_EV_ERR) {
         rr_log(RR_LOG_CRITICAL, "Can't create event loop timers.");
         exit(1);

@@ -20,6 +20,7 @@ typedef struct rr_configuration {
     long long max_memory;
     int cron_frequency; 
     int log_level;
+    char *log_file;
     int tcp_backlog;
 } rr_configuration;
 
