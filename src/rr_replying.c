@@ -179,7 +179,7 @@ int reply_write_to_client(int fd, rr_client_t *c, int handler_installed) {
                 c->replied_len -= objlen;
             }
         }
-        /* Note that we avoid to send more than NET_MAX_WRITES_PER_EVENT
+        /* Note that we avoid sending more than NET_MAX_WRITES_PER_EVENT
          * bytes, in a single threaded server it's a good idea to serve
          * other clients as well, even if a very large request comes from
          * super fast link that is always able to accept data (in real world

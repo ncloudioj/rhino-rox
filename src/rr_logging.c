@@ -18,6 +18,7 @@ static int log_level = RR_LOG_INFO;
 int rr_log_set_log_level(int level) {
     int current = log_level;
 
+    if (level < RR_LOG_DEBUG || level > RR_LOG_CRITICAL) return -1;
     log_level = level;
     return current;
 }

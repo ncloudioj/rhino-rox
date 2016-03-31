@@ -13,4 +13,16 @@
 #endif
 #endif
 
+typedef struct rr_configuration {
+    int port;
+    char *bind;
+    int max_clients;
+    long long max_memory;
+    int cron_frequency; 
+    int log_level;
+    int tcp_backlog;
+} rr_configuration;
+
+int rr_config_load(const char *path, rr_configuration *cfg);
+
 #endif

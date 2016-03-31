@@ -12,8 +12,9 @@
 #define PROTO_REPLY_MAX_LEN (16*1024)  /* max length of a reply buffer */
 #define PROTO_QUERY_MAX_LEN (512*1024*1024) /* max length of the query string */
 #define PROTO_IOBUF_LEN (16*1024) /* default read buffer length */
-#define PROTO_INLINE_MAX_LEN (1024*64) /* Max length of inline reads */
+#define PROTO_INLINE_MAX_LEN (1024*64) /* max length of inline reads */
 
+#define SERVER_CRON_MAX_FREQUENCY (1000) /* max frequency of server cron */
 
 #define CLIENT_PENDING_WRITE (1<<1) /* Client has output to send but a write
                                        handler is yet not installed. */
@@ -50,10 +51,10 @@ typedef struct rr_client_t {
     char buf[PROTO_REPLY_MAX_LEN]; /* output buffer */
 } rr_client_t;
 
-void rr_server_init(void);
+struct rr_configuration;
+void rr_server_init(struct rr_configuration *cfg);
 void rr_server_close(void);
 int rr_server_prepare_to_shutdown(void);
-
 
 rr_client_t *rr_client_create(int fd);
 void rr_client_free(rr_client_t *c);

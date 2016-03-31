@@ -36,20 +36,6 @@ static int rr_net_reuseaddr(char *err, int fd) {
     return RR_NET_OK;
 }
 
-static int rr_net_create_socket(char *err, int domain) {
-    int s;
-    if ((s = socket(domain, SOCK_STREAM, 0)) == -1) {
-        rr_net_error(err, "creating socket: %s", strerror(errno));
-        return RR_NET_ERR;
-    }
-
-    if (rr_net_reuseaddr(err,s) == RR_NET_ERR) {
-        close(s);
-        return RR_NET_ERR;
-    }
-    return s;
-}
-
 int rr_net_nonblock(char *err, int fd) {
     int flag = fcntl(fd, F_GETFL, 0);
     if (flag == -1) {

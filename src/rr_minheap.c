@@ -2,7 +2,6 @@
 #include "rr_malloc.h"
 
 static void shiftdown(minheap_t *heap, int start, int at);
-static void heapify(minheap_t *heap);
 static void shiftup(minheap_t *heap, int start);
 
 struct minheap_t *
@@ -101,16 +100,6 @@ shiftup(minheap_t *heap, int start) {
         ichild = 2 * istart + 1;
     }
     shiftdown(heap, start, istart);
-}
-
-static void
-heapify(minheap_t *heap) {
-    int i;
-
-    i = (int)(heap->len >> 2);
-    for (; i >=0; i--) {
-        shiftup(heap, i);
-    }
 }
 
 uint32_t

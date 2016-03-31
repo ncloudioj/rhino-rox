@@ -4,7 +4,9 @@
 #include "rr_logging.h"
 #include "rr_network.h"
 #include "rr_server.h"
+#include "rr_config.h"
 #include "rr_malloc.h"
+#include "ini.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -44,21 +46,22 @@ static void rr_server_signal(void) {
     return;
 }
 
-void rr_server_init(void) {
+void rr_server_init(rr_configuration *cfg) {
     server.shutdown = 0;
-    server.max_memory = 0;
-    server.max_size = 10000;
-    server.hz = 2;
+    server.max_memory = cfg->max_memory;
+    server.max_size = cfg->max_clients;
+    server.hz = cfg->cron_frequency;
     server.served = 0;
     server.rejected = 0;
     server.stats_memory_usage = 0;
     rr_server_signal();
     if ((server.el = el_loop_create(server.max_size)) == NULL) goto error;
-    if ((server.lpfd = rr_net_tcpserver(server.err, 6000, NULL, AF_INET, RR_NET_BACKLOG)) == RR_ERROR) goto error;
+    if ((server.lpfd = rr_net_tcpserver(server.err, cfg->port, cfg->bind, AF_INET, cfg->tcp_backlog))
+         == RR_ERROR) goto error;
     if (rr_net_nonblock(server.err, server.lpfd) == RR_ERROR) goto error;
     if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL) == RR_EV_ERR) goto error;
 
-    rr_log_set_log_level(RR_LOG_INFO);
+    rr_log_set_log_level(cfg->log_level);
     if (el_timer_add(server.el, 1, server_cron, NULL) == RR_EV_ERR) {
         rr_log(RR_LOG_CRITICAL, "Can't create event loop timers.");
         exit(1);
@@ -347,7 +350,12 @@ int main(int argc, char *argv[]) {
     UNUSED(argc);
     UNUSED(argv);
 
-    rr_server_init();
+    rr_configuration cfg;
+    if (rr_config_load("rhino-rox.ini", &cfg) == RR_ERROR) {
+        rr_log(RR_LOG_CRITICAL, "Failed to load the config file");
+        exit(1);
+    }
+    rr_server_init(&cfg);
     el_main(server.el);
     rr_server_close();
 }
