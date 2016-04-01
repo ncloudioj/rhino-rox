@@ -1,5 +1,6 @@
 #include "rr_datetime.h"
 
+#include <stddef.h>
 #include <sys/time.h>
 #include <stdbool.h>
 

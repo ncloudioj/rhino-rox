@@ -1,3 +1,5 @@
+#include "rr_ftmacro.h"
+
 #include "rr_rhino_rox.h"
 #include "rr_config.h"
 #include "rr_logging.h"

@@ -42,8 +42,8 @@ static int el_context_add(eventloop_t *el, int fd, int mask) {
 
     ee.events = 0;
     mask |= el->events[fd].mask; /* Merge old events */
-    if (mask & EL_EV_READ) ee.events |= EPOLLIN;
-    if (mask & EL_EV_WRITE) ee.events |= EPOLLOUT;
+    if (mask & RR_EV_READ) ee.events |= EPOLLIN;
+    if (mask & RR_EV_WRITE) ee.events |= EPOLLOUT;
     ee.data.u64 = 0; /* avoid valgrind warning */
     ee.data.fd = fd;
     if (epoll_ctl(context->epfd, op, fd, &ee) == -1) return -1;
@@ -56,8 +56,8 @@ static void el_context_del(eventloop_t *el, int fd, int delmask) {
     int mask = el->events[fd].mask & (~delmask);
 
     ee.events = 0;
-    if (mask & EL_EV_READ) ee.events |= EPOLLIN;
-    if (mask & EL_EV_WRITE) ee.events |= EPOLLOUT;
+    if (mask & RR_EV_READ) ee.events |= EPOLLIN;
+    if (mask & RR_EV_WRITE) ee.events |= EPOLLOUT;
     ee.data.u64 = 0; /* avoid valgrind warning */
     ee.data.fd = fd;
     if (mask != RR_EV_NONE) {
@@ -83,10 +83,10 @@ static int el_context_poll(eventloop_t *el, struct timeval *tvp) {
             int mask = 0;
             struct epoll_event *e = context->events+j;
 
-            if (e->events & EPOLLIN) mask |= EL_EV_READ;
-            if (e->events & EPOLLOUT) mask |= EL_EV_WRITE;
-            if (e->events & EPOLLERR) mask |= EL_EV_WRITE;
-            if (e->events & EPOLLHUP) mask |= EL_EV_WRITE;
+            if (e->events & EPOLLIN) mask |= RR_EV_READ;
+            if (e->events & EPOLLOUT) mask |= RR_EV_WRITE;
+            if (e->events & EPOLLERR) mask |= RR_EV_WRITE;
+            if (e->events & EPOLLHUP) mask |= RR_EV_WRITE;
             el->fired[j].fd = e->data.fd;
             el->fired[j].mask = mask;
         }

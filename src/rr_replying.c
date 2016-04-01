@@ -7,8 +7,6 @@
 #include <unistd.h>
 #include <errno.h>
 
-extern struct rr_server_t server;
-
 static int prepare_client_to_write(rr_client_t *c);
 static int add_reply_to_buffer(rr_client_t *c, const char *s, size_t len);
 void add_reply_sds_to_list(rr_client_t *c, sds s);

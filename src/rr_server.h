@@ -73,4 +73,7 @@ void reply_write_callback(eventloop_t *el, int fd, void *ud, int mask);
 
 bool client_has_pending_replies(rr_client_t *c);
 
+/* declare the global server variable */
+extern struct rr_server_t server;
+
 #endif

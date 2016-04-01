@@ -16,15 +16,15 @@
 #include "rr_kqueue.c"
 #endif
 
-/* timer_t callbacks for the queue */
+/* ev_timer_t callbacks for the queue */
 static inline void *timer_cpy(void *dst, const void *src) {
-    *(timer_t *) dst = *(const timer_t *) src;
+    *(ev_timer_t *) dst = *(const ev_timer_t *) src;
     return dst;
 }
 
 static inline int timer_cmp(const void *lv, const void *rv) {
-    const timer_t *l = (const timer_t *) lv;
-    const timer_t *r = (const timer_t *) rv;
+    const ev_timer_t *l = (const ev_timer_t *) lv;
+    const ev_timer_t *r = (const ev_timer_t *) rv;
 
     if ((l->sec < r->sec) || (l->sec == r->sec && l->ms < r->ms))
         return -1;
@@ -35,11 +35,11 @@ static inline int timer_cmp(const void *lv, const void *rv) {
 }
 
 static inline void timer_swp(void *lv, void *rv) {
-    timer_t tmp;
+    ev_timer_t tmp;
 
-    tmp = *(timer_t *) lv;
-    *(timer_t *) lv = *(timer_t *) rv;
-    *(timer_t *) rv = tmp;
+    tmp = *(ev_timer_t *) lv;
+    *(ev_timer_t *) lv = *(ev_timer_t *) rv;
+    *(ev_timer_t *) rv = tmp;
 }
 
 eventloop_t *el_loop_create(int size) {
@@ -49,7 +49,7 @@ eventloop_t *el_loop_create(int size) {
     if ((el = rr_malloc(sizeof(*el))) == NULL) goto err;
     el->events = rr_malloc(sizeof(event_t)*size);
     el->fired = rr_malloc(sizeof(fired_event_t)*size);
-    el->timers = minheap_create(1, sizeof(timer_t), timer_cmp, timer_cpy, timer_swp);
+    el->timers = minheap_create(1, sizeof(ev_timer_t), timer_cmp, timer_cpy, timer_swp);
     if (el->events == NULL || el->fired == NULL || el->timers == NULL) goto err;
     el->size = size;
     el->stop = 0;
@@ -159,7 +159,7 @@ int el_loop_poll(eventloop_t *el, struct timeval *tvp) {
 }
 
 int el_timer_add(eventloop_t *el, long long milliseconds, timer_callback *proc, void *ud) {
-    timer_t t;
+    ev_timer_t t;
 
     rr_dt_expire(milliseconds, &t.sec, &t.ms);
     t.timer_cb = proc;
@@ -173,10 +173,10 @@ int el_timer_process(eventloop_t *el) {
     uint32_t len = minheap_len(el->timers);
 
     while (len) {
-        timer_t *t = (timer_t *) minheap_min(el->timers);
+        ev_timer_t *t = (ev_timer_t *) minheap_min(el->timers);
         if (!rr_dt_is_past(t->sec, t->ms)) break;
 
-        t = (timer_t *) minheap_pop(el->timers);
+        t = (ev_timer_t *) minheap_pop(el->timers);
         long long millisecond = t->timer_cb(el, t->ud);
         /* if the timer is still active, push it back to heap */
         if (millisecond > 0) {
@@ -195,7 +195,7 @@ static bool el_poll_get_timeout(eventloop_t *el, struct timeval *tvp) {
 
     if (!minheap_len(el->timers)) return false;
 
-    timer_t *t = (timer_t *) minheap_min(el->timers);
+    ev_timer_t *t = (ev_timer_t *) minheap_min(el->timers);
     rr_dt_now(&now_sec, &now_ms);
 
     tvp->tv_sec = t->sec - now_sec;

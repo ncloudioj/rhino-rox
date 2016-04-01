@@ -33,12 +33,12 @@ typedef struct fired_event_t {
 } fired_event_t;
 
 /* Timer event */
-typedef struct timer_t {
+typedef struct ev_timer_t {
     long sec;                 /* fire timer at: second part */
     long ms;                  /* fire timer at: millisecond part */
     void *ud;                 /* user data */
     timer_callback *timer_cb; /* timer callback */
-} timer_t;
+} ev_timer_t;
 
 /* State of an event loop */
 typedef struct eventloop_t {
