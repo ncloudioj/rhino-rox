@@ -161,7 +161,7 @@ int el_loop_poll(eventloop_t *el, struct timeval *tvp) {
 int el_timer_add(eventloop_t *el, long long milliseconds, timer_callback *proc, void *ud) {
     ev_timer_t t;
 
-    rr_dt_expire(milliseconds, &t.sec, &t.ms);
+    rr_dt_expire_at(milliseconds, &t.sec, &t.ms);
     t.timer_cb = proc;
     t.ud = ud;
     if (minheap_push(el->timers, &t)) return RR_EV_ERR;
@@ -180,7 +180,7 @@ int el_timer_process(eventloop_t *el) {
         long long millisecond = t->timer_cb(el, t->ud);
         /* if the timer is still active, push it back to heap */
         if (millisecond > 0) {
-            rr_dt_expire(millisecond, &t->sec, &t->ms);
+            rr_dt_expire_at(millisecond, &t->sec, &t->ms);
             ret = minheap_push(el->timers, t);
             assert(!ret);
         }

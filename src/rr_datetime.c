@@ -12,7 +12,7 @@ void rr_dt_now(long *sec, long *ms) {
     *ms = tv.tv_usec/1000;
 }
 
-void rr_dt_expire(long long delta, long *sec, long *ms) {
+void rr_dt_expire_at(long long delta, long *sec, long *ms) {
     long now_sec, now_ms, utl_sec, utl_ms;
 
     rr_dt_now(&now_sec, &now_ms);
