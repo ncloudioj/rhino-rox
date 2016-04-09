@@ -8,6 +8,8 @@
 #define   RR_LOG_ERROR      3
 #define   RR_LOG_CRITICAL   4
 
+#include <stdio.h>
+
 #ifdef NDEBUG
 #define rr_debug(fmt, ...)
 #else
