@@ -11,7 +11,8 @@
  * Added features:
  *  - non-recursive style iterator
  *  - custom memory cleanup callback when emptying dict
- *  - overwrite the existing keys with value cleanup callback
+ *  - overwrite the value for the existing keys
+ *  - keep track the size of dict
  *
  * Further information about the data structure can be found at:
  *  http://cr.yp.to/critbit.html
@@ -28,12 +29,19 @@
 #include <stdint.h>
 
 typedef struct Node Node;
+typedef struct Dict Dict;
+
+struct dict_t {
+    Dict *dict;
+    unsigned long size;
+    dict_free_callback free_cb;
+};
 
 /* A node with a NULL value suggests it's an internal node in which stores the
  * nodes as 'n' in the union struct. Otherwise, it's a leaf node, in which 's'
  * in the union stores the key, and v as the value
  */
-struct dict_t {
+struct Dict {
     union {
         Node *n;
         const char *s;
@@ -42,7 +50,7 @@ struct dict_t {
 };
 
 struct Node {
-    dict_t child[2];  /* children could be either leaf and internal nodes */
+    Dict child[2];  /* children could be either leaf and internal nodes */
     size_t byte_idx;  /* the byte index where the first bit differs */
     uint8_t bit_idx;  /* the bit index where two children differ */
 };
@@ -52,10 +60,20 @@ struct dict_iterator_t {
     list *stack;
 };
 
+#define EMPTY_NODE(d) ((d)->u.n == NULL)
+
+unsigned long dict_length(dict_t *dict) {
+    return dict->size;
+}
+
+void dict_set_freecb(dict_t *dict, dict_free_callback free_cb) {
+    dict->free_cb = free_cb;
+}
+
 /* Get the closest key to this in a non-empty dict */
-static dict_t *closest(dict_t *n, const char *key) {
+static Dict *closest(Dict *n, const char *key) {
     size_t len = strlen(key);
-    const uint8_t *bytes = (const uint8_t *)key;
+    const uint8_t *bytes = (const uint8_t *) key;
 
     while (!n->v) {
         uint8_t direction = 0;
@@ -69,47 +87,85 @@ static dict_t *closest(dict_t *n, const char *key) {
     return n;
 }
 
+static Dict *get_prefix(Dict *dict, const char *prefix) {
+    Dict *n, *top;
+    size_t len = strlen(prefix);
+    const uint8_t *bytes = (const uint8_t *) prefix;
+
+    /* Empty dict -> return empty dict. */
+    if (!dict->u.n) return dict;
+
+    top = n = dict;
+
+    /* Walk to find the top, as keep checking whether the prefix matches */
+    while (!n->v) {
+        uint8_t c = 0, direction;
+
+        if (n->u.n->byte_idx < len)
+            c = bytes[n->u.n->byte_idx];
+
+        direction = (c >> n->u.n->bit_idx) & 1;
+        n = &n->u.n->child[direction];
+        if (c) top = n;
+    }
+
+    if (strncmp(n->u.s, prefix, len)) {
+        /* Convenient return for prefixes which do not appear in dict */
+        static Dict empty_map;
+        return &empty_map;
+    }
+
+    return top;
+}
+
 bool dict_empty(dict_t *dict) {
-    return dict->u.n == NULL;
+    return dict->size == 0;
 }
 
 dict_t *dict_create(void) {
-    return rr_calloc(sizeof(dict_t));
+    dict_t *d;
+
+    d = rr_malloc(sizeof(dict_t));
+    d->dict = rr_calloc(sizeof(Dict));
+    if (d->dict == NULL) {
+        rr_free(d);
+        return NULL;
+    }
+    d->size = 0;
+    d->free_cb = NULL;
+    return d;
 }
 
-void dict_free(dict_t *dict, dict_free_callback free_cb) {
+void dict_free(dict_t *dict) {
     if (!dict) return;
-    dict_clear(dict, free_cb);
+    dict_clear(dict);
+    rr_free(dict->dict);
     rr_free(dict);
 }
 
 void *dict_get(dict_t *dict, const char *key) {
-    /* Not empty dict? */
-    if (dict->u.n) {
-        dict_t *n = closest(dict, key);
+    Dict *d = dict->dict;
+
+    if (d->u.n) {
+        Dict *n = closest(d, key);
         if (strcmp(key, n->u.s) == 0)
             return n->v;
     }
     return NULL;
 }
 
-void *dict_get_closest(dict_t *dict, const char *prefix) {
-    void *v = dict_get(dict, prefix);
-    if (v) return v;
-
-    dict_t *m = dict_get_prefix(dict, prefix);
-    if (dict_empty(m)) return NULL;
-    return m->v;
+bool dict_has_prefix(dict_t *dict, const char *prefix) {
+    return !EMPTY_NODE(get_prefix(dict->dict, prefix));
 }
 
-bool dict_contains(dict_t *dict, const char *prefix) {
-    return !dict_empty(dict_get_prefix(dict, prefix));
+bool dict_contains(dict_t *dict, const char *key) {
+    return dict_get(dict, key) != NULL;
 }
 
-bool dict_set(dict_t *dict, const char *k, void *value, dict_free_callback free_cb) {
+bool dict_set(dict_t *dict, const char *k, void *value) {
+    Dict *d = dict->dict, *n;
     size_t len = strlen(k);
     const uint8_t *bytes = (const uint8_t *) k;
-    dict_t *n;
     Node *newn;
     size_t byte_idx;
     uint8_t bit_idx, new_dir;
@@ -119,20 +175,21 @@ bool dict_set(dict_t *dict, const char *k, void *value, dict_free_callback free_
     if (!(key = rr_strdup(k))) return false;
 
     /* Empty dict? */
-    if (!dict->u.n) {
-        dict->u.s = key;
-        dict->v = (void *) value;
+    if (!d->u.n) {
+        d->u.s = key;
+        d->v = value;
+        dict->size++;
         return true;
     }
 
     /* Find closest existing key. */
-    n = closest(dict, key);
+    n = closest(d, key);
 
     /* Find where they differ. */
     for (byte_idx = 0; n->u.s[byte_idx] == key[byte_idx]; byte_idx++) {
         if (key[byte_idx] == '\0') {
-            /* All identical! Overwrite the old value */
-            if (free_cb) free_cb(n->v);
+            /* Found the same key! Overwrite the old value */
+            if (dict->free_cb) dict->free_cb(n->v);
             n->v = value;
             rr_free(key);
             return true;
@@ -158,7 +215,7 @@ bool dict_set(dict_t *dict, const char *k, void *value, dict_free_callback free_
     newn->child[new_dir].u.s = key;
 
     /* Find where to insert: not the closest, but the first which differs */
-    n = dict;
+    n = d;
     while (!n->v) {
         uint8_t direction = 0;
 
@@ -176,24 +233,20 @@ bool dict_set(dict_t *dict, const char *k, void *value, dict_free_callback free_
     newn->child[!new_dir] = *n;
     n->u.n = newn;
     n->v = NULL;
+    dict->size++;
     return true;
 }
 
 void *dict_del(dict_t *dict, const char *key) {
     size_t len = strlen(key);
-    const uint8_t *bytes = (const uint8_t *)key;
-    dict_t *parent = NULL, *n;
+    const uint8_t *bytes = (const uint8_t *) key;
+    Dict *parent = NULL, *n = dict->dict;
     void *value = NULL;
     uint8_t direction;
 
-    /* Empty dict? */
-    if (!dict->u.n) {
-        return NULL;
-    }
+    if (!n->u.n) return NULL;
 
     /* Find the closest, also keep track of the parent. */
-    n = dict;
-    /* Anything with a NULL value is a node. */
     while (!n->v) {
         uint8_t c = 0;
 
@@ -212,13 +265,15 @@ void *dict_del(dict_t *dict, const char *key) {
 
     rr_free((char *) n->u.s);
     value = n->v;
+    dict->size--;
 
     if (!parent) {
-        /* Deleted the last node. */
-        dict->u.n = NULL;
+        /* Reset the last item in the dict */
+        n->u.n = NULL;
+        n->v = NULL;
     } else {
         Node *old = parent->u.n;
-        /* Raise other node to parent. */
+        /* Raise the other node as the parent. */
         *parent = old->child[!direction];
         rr_free(old);
     }
@@ -226,88 +281,68 @@ void *dict_del(dict_t *dict, const char *key) {
     return value;
 }
 
-static bool iterate(dict_t n, bool (*handle)(const char *, void *, void *), void *data) {
-    if (n.v) return handle(n.u.s, n.v, data);
+static bool iterate(Dict *n, bool (*handle)(const char *, void *, void *), void *data) {
+    if (n->v)
+        return handle(n->u.s, n->v, data);
 
-    return iterate(n.u.n->child[0], handle, data)
-        && iterate(n.u.n->child[1], handle, data);
+    return iterate(n->u.n->child, handle, data)
+        && iterate(n->u.n->child+1, handle, data);
 }
 
 void dict_foreach(dict_t *dict, bool (*handle)(const char *, void *, void *), void *data) {
-    if (!dict->u.n) return;
+    Dict *d = dict->dict;
 
-    iterate(*dict, handle, data);
+    if (!d->u.n) return;
+
+    iterate(d, handle, data);
 }
 
-dict_t *dict_get_prefix(dict_t *dict, const char *prefix) {
-    dict_t *n, *top;
-    size_t len = strlen(prefix);
-    const uint8_t *bytes = (const uint8_t *) prefix;
-
-    /* Empty dict -> return empty dict. */
-    if (!dict->u.n) return dict;
-
-    top = n = dict;
-
-    /* We walk to find the top, but keep going to check prefix matches */
-    while (!n->v) {
-        uint8_t c = 0, direction;
-
-        if (n->u.n->byte_idx < len)
-            c = bytes[n->u.n->byte_idx];
-
-        direction = (c >> n->u.n->bit_idx) & 1;
-        n = &n->u.n->child[direction];
-        if (c) top = n;
-    }
-
-    if (strncmp(n->u.s, prefix, len)) {
-        /* Convenient return for prefixes which do not appear in dict */
-        static dict_t empty_map;
-        return &empty_map;
-    }
-
-    return top;
-}
-
-static void clear(dict_t n, dict_free_callback free_cb) {
-    if (!n.v) {
-        clear(n.u.n->child[0], free_cb);
-        clear(n.u.n->child[1], free_cb);
-        rr_free(n.u.n);
+static void clear(Dict *n, dict_free_callback free_cb) {
+    if (!n->v) {
+        clear(n->u.n->child, free_cb);
+        clear(n->u.n->child+1, free_cb);
+        rr_free(n->u.n);
     } else {
-        if (free_cb) free_cb(n.v);
-        rr_free((char*)n.u.s);
+        if (free_cb) free_cb(n->v);
+        rr_free((char *) n->u.s);
     }
 }
 
-void dict_clear(dict_t *dict, dict_free_callback free_cb) {
-    if (dict->u.n) clear(*dict, free_cb);
-    dict->u.n = NULL;
-    dict->v = NULL;
+void dict_clear(dict_t *dict) {
+    Dict *d = dict->dict;
+
+    if (d->u.n)
+        clear(d, dict->free_cb);
+    d->u.n = NULL;
+    d->v = NULL;
+    dict->size = 0;
 }
 
-static bool copy(dict_t *dest, dict_t n, dict_free_callback free_cb) {
-    if (!n.v)
-        return copy(dest, n.u.n->child[0], free_cb)
-            && copy(dest, n.u.n->child[1], free_cb);
+static bool copy(dict_t *dest, Dict *n) {
+    if (!n->v)
+        return copy(dest, n->u.n->child)
+            && copy(dest, n->u.n->child+1);
     else
-        return dict_set(dest, n.u.s, n.v, free_cb);
+        return dict_set(dest, n->u.s, n->v);
 }
 
-bool dict_copy(dict_t *dest, dict_t *src, dict_free_callback free_cb) {
-    if (!src || !src->u.n) return true;
+bool dict_copy(dict_t *dest, dict_t *src) {
+    if (!src || !src->dict->u.n) return false;
 
-    return copy(dest, *src, free_cb);
+    bool rv = copy(dest, src->dict);
+    dest->size = src->size;
+    dest->free_cb = src->free_cb;
+    return rv;
 }
 
-dict_iterator_t *dict_iter_create(dict_t *dict) {
-    dict_t *node;
+static dict_iterator_t *iter_create(Dict *dict) {
+    Dict *node;
 
     dict_iterator_t *iter = rr_malloc(sizeof(*iter));
+    if (!iter) return NULL;
     iter->stack = listCreate();
-    if (dict_empty(dict)) {
-        /* if it's either a single node or an empty dict */
+    if (EMPTY_NODE(dict)) {
+        /* It's either a single node or an empty dict */
         if (dict->v) listAddNodeHead(iter->stack, dict);
         return iter;
     }
@@ -321,6 +356,17 @@ dict_iterator_t *dict_iter_create(dict_t *dict) {
     return iter;
 }
 
+dict_iterator_t *dict_get_prefix(dict_t *dict, const char *prefix) {
+    Dict *d;
+
+    d = get_prefix(dict->dict, prefix);
+    return iter_create(d);
+}
+
+dict_iterator_t *dict_iter_create(dict_t *dict) {
+    return iter_create(dict->dict);
+}
+
 bool dict_iter_hasnext(dict_iterator_t *iter) {
    return listLength(iter->stack);
 }
@@ -328,10 +374,10 @@ bool dict_iter_hasnext(dict_iterator_t *iter) {
 dict_kv_t dict_iter_next(dict_iterator_t *iter) {
     dict_kv_t kv;
     listNode *ln;
-    dict_t *dict, *node;
+    Dict *dict, *node;
 
     ln = listIndex(iter->stack, 0);
-    dict = (dict_t *) ln->value;
+    dict = (Dict *) ln->value;
     /* The toppest item in the stack must be a leaf node */
     assert(dict->v);
     listDelNode(iter->stack, ln);
@@ -342,7 +388,7 @@ dict_kv_t dict_iter_next(dict_iterator_t *iter) {
 
     /* Move iterator to the next leaf node */
     ln = listIndex(iter->stack, 0);
-    dict = (dict_t *) ln->value;
+    dict = (Dict *) ln->value;
     listDelNode(iter->stack, ln);
     /* This node must be an internal node */
     assert(!dict->v);
