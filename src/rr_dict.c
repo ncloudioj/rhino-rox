@@ -29,9 +29,9 @@
 
 typedef struct Node Node;
 
-/* The NULL value 'v' suggests it's an internal node which stores nodes as 'n'
- * in the union struct. Otherwise, it's a leaf node, where 's' in the union
- * will be used as the key, and v as the value.
+/* A node with a NULL value suggests it's an internal node in which stores the
+ * nodes as 'n' in the union struct. Otherwise, it's a leaf node, in which 's'
+ * in the union stores the key, and v as the value
  */
 struct dict_t {
     union {
@@ -42,9 +42,9 @@ struct dict_t {
 };
 
 struct Node {
-    dict_t child[2];  /* children could be both leaf and internal nodes */
-    size_t byte_idx;  /* The byte index where the first bit differs */
-    uint8_t bit_idx;  /* The bit index where two children differ */
+    dict_t child[2];  /* children could be either leaf and internal nodes */
+    size_t byte_idx;  /* the byte index where the first bit differs */
+    uint8_t bit_idx;  /* the bit index where two children differ */
 };
 
 /* The dict iterator implemented by linked list */
@@ -135,7 +135,7 @@ bool dict_set(dict_t *dict, const char *k, void *value, dict_free_callback free_
             if (free_cb) free_cb(n->v);
             n->v = value;
             rr_free(key);
-            return false;
+            return true;
         }
     }
 
@@ -157,7 +157,7 @@ bool dict_set(dict_t *dict, const char *k, void *value, dict_free_callback free_
     newn->child[new_dir].v = value;
     newn->child[new_dir].u.s = key;
 
-    /* Find where to insert: not closest, but first which differs! */
+    /* Find where to insert: not the closest, but the first which differs */
     n = dict;
     while (!n->v) {
         uint8_t direction = 0;
@@ -191,9 +191,9 @@ void *dict_del(dict_t *dict, const char *key) {
         return NULL;
     }
 
-    /* Find closest, but keep track of parent. */
+    /* Find the closest, also keep track of the parent. */
     n = dict;
-    /* Anything with NULL value is a node. */
+    /* Anything with a NULL value is a node. */
     while (!n->v) {
         uint8_t c = 0;
 
@@ -214,7 +214,7 @@ void *dict_del(dict_t *dict, const char *key) {
     value = n->v;
 
     if (!parent) {
-        /* We deleted the last node. */
+        /* Deleted the last node. */
         dict->u.n = NULL;
     } else {
         Node *old = parent->u.n;
