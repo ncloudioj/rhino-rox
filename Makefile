@@ -7,7 +7,12 @@ default: all
 install:
 	cd src && make $@
 
-.PHONY: clean
+test:
+	cd src && make
+	cd tests && make $@
+
+.PHONY: clean test
 
 clean:
 	cd src && make $@
+	cd tests && make $@

@@ -43,21 +43,23 @@ all: $(PROGS)
 install: $(PROGS)
 	for f in $(PROGS); do cp $$f $(PREFIX)/bin; done
 
-.PHONY: clean valgrind
-
-clean:
-	rm -rf $(PROGS) *.[ao] *.so
-
-test: all
-	cd tests && ./run-test.sh
-
-valgrind:
-	$(MAKE) OPT="-O0"
-	valgrind --leak-check=yes --log-file=valgrind.log ./rhino-rox
-
 rhino-rox: rr_server.o rr_logging.o sds.o adlist.o rr_malloc.o rr_event.o rr_array.o \
 	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o rr_config.o ini.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
+
+.PHONY: clean cleanall valgrind
+
+clean:
+	rm -rf $(PROGS) *.o
+
+cleanall: clean
+ifneq (,$(wildcard $(JEMALLOC_DIR)/Makefile))
+	-(cd $(JEMALLOC_DIR) && $(MAKE) distclean)
+endif
+
+valgrind:
+	$(MAKE) OPT="-O0"
+	valgrind --leak-check=yes --log-file=valgrind.log ./rhino-rox
