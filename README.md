@@ -21,7 +21,7 @@ Rhino-Rox ([Rhinopithecus Roxellana][3]), also known as golden snub-nosed monkey
 * [Jemalloc][2]
 * [inih][5]
 
-# Licence
+# License
 BSD
 
 # Structure of the codebase

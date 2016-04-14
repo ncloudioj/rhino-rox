@@ -17,10 +17,10 @@
 #define SERVER_CRON_MAX_FREQUENCY (1000) /* max frequency of server cron */
 #define SERVER_RESERVED_FDS 32           /* number of reserved file descriptors */
 
-#define CLIENT_PENDING_WRITE (1<<1) /* Client has output to send but a write
+#define CLIENT_PENDING_WRITE (1<<1) /* client has output to send but a write
                                        handler is yet not installed. */
-#define CLIENT_CLOSE_AFTER_REPLY (1<<2) /* Close once complete the entire reply */
-#define CLIENT_CLOSE_ASAP (1<<3)        /* Close client ASAP */
+#define CLIENT_CLOSE_AFTER_REPLY (1<<2) /* close once complete the entire reply */
+#define CLIENT_CLOSE_ASAP (1<<3)        /* close client ASAP */
 
 #define NET_MAX_WRITES_PER_EVENT (1024*64) /* Max reply size for each EVENT */
 
@@ -30,7 +30,7 @@ struct rr_server_t {
     unsigned int max_clients;          /* max client size */
     unsigned int rejected;             /* counter for rejected clients */
     unsigned int served;               /* counter for served clients */
-    unsigned long long max_memory;     /* Max number of memory bytes to use */
+    unsigned long long max_memory;     /* max number of memory bytes to use */
     int hz;                            /* frequency of server cron */
     int lpfd;                          /* file descriptor for the listen socket */
     int shutdown;                      /* signal server to shutdown */
