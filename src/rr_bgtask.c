@@ -49,25 +49,25 @@ void rr_bgt_init(void) {
 }
 
 static void *thread_handler(void *arg) {
-    int type = (int) arg;
     struct Task *task;
-
-    sigset_t sigset;
+    list *task_queue;
+    pthread_mutex_t *lock;
+    pthread_cond_t *cond;
+    int type = (int) arg;
 
     if (type >= TASK_NTYPES) {
         rr_log(RR_LOG_ERROR,
                "Error: background thread started with wrong type %d", type);
         return NULL;
     }
+    task_queue = tasks[type];
+    lock = locks + type;
+    cond = cons + type;
 
-    /* Make the thread killable at any time, so that bioKillThreads()
-     * can work reliably. */
+    /*  enable thread cancellation and disable SIGALRM for this thread */
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-
-    pthread_mutex_lock(locks+type);
-    /* Block SIGALRM so we are sure that only the main thread will
-     * receive the watchdog signal. */
+    sigset_t sigset;
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGALRM);
     if (pthread_sigmask(SIG_BLOCK, &sigset, NULL)) {
@@ -76,32 +76,27 @@ static void *thread_handler(void *arg) {
                strerror(errno));
     }
 
+    pthread_mutex_lock(lock);
     for(;;) {
         listNode *ln;
 
-        /* The loop always starts with the lock hold. */
-        if (listLength(tasks[type]) == 0) {
-            pthread_cond_wait(cons+type, locks+type);
+        if (listLength(task_queue) == 0) {
+            pthread_cond_wait(cond, lock);
             continue;
         }
-        /* Pop the job from the queue. */
-        ln = listFirst(tasks[type]);
+        ln = listFirst(task_queue);
         task = ln->value;
-        /* It is now possible to unlock the background system as we know have
-         * a stand alone job structure to process.*/
-        pthread_mutex_unlock(locks+type);
+        pthread_mutex_unlock(lock);
 
-        /* Process the job based on its type. */
+        /* process the task based on its type. */
         if (type == TASK_LAZY_FREE) {
             /* TODO: add lazy free dispatcher here */
             rr_log(RR_LOG_INFO, "Echoing from background thread %d", type);
         }
         rr_free(task);
 
-        /* Lock again before reiterating the loop, if there are no longer
-         * jobs to process we'll block again in pthread_cond_wait(). */
-        pthread_mutex_lock(locks+type);
-        listDelNode(tasks[type], ln);
+        pthread_mutex_lock(lock);
+        listDelNode(task_queue, ln);
     }
 
     return NULL;
