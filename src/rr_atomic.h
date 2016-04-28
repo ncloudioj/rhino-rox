@@ -9,7 +9,7 @@
 #define ATOM_INC(ptr,n,mutex) __sync_add_and_fetch(ptr,(n))
 #define ATOM_DEC(ptr,n,mutex) __sync_sub_and_fetch(ptr,(n))
 #define ATOM_GET(ptr,dst,mutex) do {   \
-	dst = __sync_sub_and_fetch(ptr,0); \
+    dst = __sync_sub_and_fetch(ptr,0); \
 } while (0)
 
 #else

@@ -21,11 +21,11 @@ ifeq ($(UNAME_S),Linux)
 endif
 
 all: jemalloc
-	
+
 .PHONY: jemalloc update_deps
 
 $(JEMALLOC_LIB): $(JEMALLOC_DIR)/Makefile
-	cd $(JEMALLOC_DIR) && $(MAKE) CC=$(CC) 
+	cd $(JEMALLOC_DIR) && $(MAKE) CC=$(CC)
 
 $(JEMALLOC_DIR)/autogen.sh:
 	git submodule update --init

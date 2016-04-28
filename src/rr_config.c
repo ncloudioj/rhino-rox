@@ -134,16 +134,16 @@ static int handler(void *config,
     } else if (MATCH("logging", "log_file")) {
         cfg->log_file = strdup(value);
         if (cfg->log_file[0] != '\0') {
-			FILE *fp;
+            FILE *fp;
 
-			fp = fopen(cfg->log_file, "a");
-			if (fp == NULL) {
-				snprintf(msg, sizeof(msg), "Failed to open log file \"%s\": %s",
-					cfg->log_file, strerror(errno));
-				err = msg;
-				goto error;
-			}
-			fclose(fp);
+            fp = fopen(cfg->log_file, "a");
+            if (fp == NULL) {
+                snprintf(msg, sizeof(msg), "Failed to open log file \"%s\": %s",
+                    cfg->log_file, strerror(errno));
+                err = msg;
+                goto error;
+            }
+            fclose(fp);
         }
     } else if (MATCH("network", "port")) {
         cfg->port = atoi(value);

@@ -87,5 +87,5 @@ size_t rr_get_used_memory(void) {
 }
 
 void rr_set_oom_handler(void (*oom_handler)(size_t)) {
-	rr_oom_handler = oom_handler;
+    rr_oom_handler = oom_handler;
 }

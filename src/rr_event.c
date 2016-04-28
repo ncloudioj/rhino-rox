@@ -222,7 +222,7 @@ void el_main(eventloop_t *el) {
         nfevents = el_loop_poll(el, tv);
 
         ntimer = el_timer_process(el);
-        rr_log(RR_LOG_INFO, "Processed %d events, file events: %d, timer: %d",
+        rr_log(RR_LOG_DEBUG, "Processed %d events, file events: %d, timer: %d",
             nfevents+ntimer, nfevents, ntimer);
     }
 }

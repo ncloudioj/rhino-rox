@@ -1,4 +1,4 @@
-Inspired by Redis, Rhino-Rox aims for providing an easy way to serve your in-memory data structure via network.
+Inspired by Redis, Rhino-Rox aims at providing an easy way to serve your in-memory data structure via network.
 
 # Why Rhino-Rox
 Yes, you should use Redis whenever is possible. However, occasionally there are some infrequently used data structures that you do want to wrap them up and access from different processes or machines. Imaging you've been asked, "Hey, this data structure is great, can I access it from anywhere like Redis?". Rhino-Rox is an attempt to solve that kind of problem.

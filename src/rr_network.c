@@ -19,7 +19,7 @@
 
 static void rr_net_error(char *err, const char *fmt, ...) {
     va_list vl;
- 
+
     if (!err) return;
     va_start(vl, fmt);
     vsnprintf(err, RR_NET_ERR_MAXLEN, fmt, vl);

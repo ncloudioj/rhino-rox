@@ -18,7 +18,7 @@ typedef struct rr_configuration {
     char *bind;
     int max_clients;
     long long max_memory;
-    int cron_frequency; 
+    int cron_frequency;
     int log_level;
     char *log_file;
     int tcp_backlog;
