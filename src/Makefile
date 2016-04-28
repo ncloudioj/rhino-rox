@@ -44,7 +44,7 @@ install: $(PROGS)
 	for f in $(PROGS); do cp $$f $(PREFIX)/bin; done
 
 rhino-rox: rr_server.o rr_logging.o sds.o adlist.o rr_malloc.o rr_event.o rr_array.o \
-	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o rr_config.o ini.o
+	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o rr_config.o rr_bgtask.o ini.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
 
 %.o: %.c

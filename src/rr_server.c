@@ -7,6 +7,7 @@
 #include "rr_server.h"
 #include "rr_config.h"
 #include "rr_malloc.h"
+#include "rr_bgtask.h"
 #include "ini.h"
 
 #include <assert.h>
@@ -79,6 +80,9 @@ void rr_server_init(rr_configuration *cfg) {
     server.clients = listCreate();
     server.clients_with_pending_writes = listCreate();
     server.clients_to_close = listCreate();
+
+    /* light up background task runners */
+    rr_bgt_init();
     return;
 error:
     rr_log(RR_LOG_CRITICAL, server.err);
