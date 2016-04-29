@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+typedef long long mstime_t; /* millisecond time type. */
+
 void rr_dt_now(long *sec, long *ms);
 
 /*
@@ -15,5 +17,9 @@ void rr_dt_expire_at(long long delta, long *sec, long *ms);
  * Return true if the given time is already past or equal to the current
  */
 bool rr_dt_is_past(long sec, long ms);
+
+
+long long rr_dt_ustime(void);
+mstime_t rr_dt_mstime(void);
 
 #endif

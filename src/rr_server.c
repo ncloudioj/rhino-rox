@@ -9,6 +9,8 @@
 #include "rr_malloc.h"
 #include "rr_bgtask.h"
 #include "rr_db.h"
+#include "rr_cmd_admin.h"
+#include "rr_datetime.h"
 #include "ini.h"
 
 #include <assert.h>
@@ -30,6 +32,72 @@ static void handle_accept(eventloop_t *el, int fd, void *ud, int mask);
 static void add_client(int fd, int flags, char *ip);
 static void client_free_async(rr_client_t *c);
 static void handle_async_freed_clients(void);
+static void free_client_argv(rr_client_t *c);
+static int cmd_process(rr_client_t *c);
+static void call(rr_client_t *c, int flags);
+
+/*
+ * Every entry is composed of the following fields:
+ *
+ * name: a string representing the command name.
+ * function: pointer to the C function implementing the command.
+ * arity: number of arguments, it is possible to use -N to say >= N
+ * sflags: command flags as string. See below for a table of flags.
+ * flags: flags as bitmask. Computed by Redis using the 'sflags' field.
+ * get_keys_proc: an optional function to get key arguments from a command.
+ *                This is only used when the following three fields are not
+ *                enough to specify what arguments are keys.
+ * first_key_index: first argument that is a key
+ * last_key_index: last argument that is a key
+ * key_step: step to get all the keys from first to last argument. For instance
+ *           in MSET the step is two since arguments are key,val,key,val,...
+ * microseconds: microseconds of total execution time for this command.
+ * calls: total number of calls of this command.
+ *
+ * The flags, microseconds and calls fields are computed by Redis and should
+ * always be set to zero.
+ *
+ * Command flags are expressed using strings where every character represents
+ * a flag. Later the populateCommandTable() function will take care of
+ * populating the real 'flags' field using this characters.
+ *
+ * This is the meaning of the flags:
+ *
+ * w: write command (may modify the key space).
+ * r: read command  (will never modify the key space).
+ * m: may increase memory usage once called. Don't allow if out of memory.
+ * a: admin command, like SAVE or SHUTDOWN.
+ * p: Pub/Sub related command.
+ * f: force replication of this command, regardless of server.dirty.
+ * s: command not allowed in scripts.
+ * R: random command. Command is not deterministic, that is, the same command
+ *    with the same arguments, with the same key space, may have different
+ *    results. For instance SPOP and RANDOMKEY are two random commands.
+ * S: Sort command output array if called from script, so that the output
+ *    is deterministic.
+ * l: Allow command while loading the database.
+ * t: Allow command while a slave has stale data but is not allowed to
+ *    server this data. Normally no command is accepted in this condition
+ *    but just a few.
+ * M: Do not automatically propagate the command on MONITOR.
+ * k: Perform an implicit ASKING for this command, so the command will be
+ *    accepted in cluster mode if the slot is marked as 'importing'.
+ * F: Fast command: O(1) or O(log(N)) command that should never delay
+ *    its execution as long as the kernel scheduler is giving us time.
+ *    Note that commands that may trigger a DEL as a side effect (like SET)
+ *    are not fast commands.
+ */
+struct redisCommand redisCommandTable[] = {
+    /*  {"get",getCommand,2,"rF",0,NULL,1,1,1,0,0}, */
+    /*  {"set"tCommand,-3,"wm",0,NULL,1,1,1,0,0}, */
+    /*  {"del",delCommand,-2,"w",0,NULL,1,-1,1,0,0}, */
+    /*  {"exists",existsCommand,-2,"rF",0,NULL,1,-1,1,0,0}, */
+    /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
+    {"ping",rr_cmd_admin_ping,-1,"rtF",0,NULL,0,0,0,0,0},
+    {"echo",rr_cmd_admin_echo,2,"rF",0,NULL,0,0,0,0,0},
+    {"shutdown",rr_cmd_admin_shutdown,-1,"arlt",0,NULL,0,0,0,0,0},
+    /*  {"command",commandCommand,0,"rlt",0,NULL,0,0,0,0,0}, */
+};
 
 static void rr_server_shutdown(int sig) {
     UNUSED(sig);
@@ -48,6 +116,43 @@ static void rr_server_signal(void) {
     sigaction(SIGTERM, &act, NULL);
     sigaction(SIGINT, &act, NULL);
     return;
+}
+
+void populateCommandTable(void) {
+    int j;
+    int numcommands = sizeof(redisCommandTable)/sizeof(struct redisCommand);
+
+    for (j = 0; j < numcommands; j++) {
+        struct redisCommand *c = redisCommandTable+j;
+        char *f = c->sflags;
+        int retval;
+
+        while(*f != '\0') {
+            switch(*f) {
+            case 'w': c->flags |= CMD_WRITE; break;
+            case 'r': c->flags |= CMD_READONLY; break;
+            case 'm': c->flags |= CMD_DENYOOM; break;
+            case 'a': c->flags |= CMD_ADMIN; break;
+            case 'p': c->flags |= CMD_PUBSUB; break;
+            case 's': c->flags |= CMD_NOSCRIPT; break;
+            case 'R': c->flags |= CMD_RANDOM; break;
+            case 'S': c->flags |= CMD_SORT_FOR_SCRIPT; break;
+            case 'l': c->flags |= CMD_LOADING; break;
+            case 't': c->flags |= CMD_STALE; break;
+            case 'M': c->flags |= CMD_SKIP_MONITOR; break;
+            case 'k': c->flags |= CMD_ASKING; break;
+            case 'F': c->flags |= CMD_FAST; break;
+            default:
+                rr_log(RR_LOG_ERROR, "Unsupported command flag");
+                exit(1);
+                break;
+            }
+            f++;
+        }
+
+        retval = dict_set(server.commands, sdsnew(c->name), c);
+        assert(retval);
+    }
 }
 
 void rr_server_init(rr_configuration *cfg) {
@@ -91,6 +196,10 @@ void rr_server_init(rr_configuration *cfg) {
         server.dbs[i] = rr_db_create(i);
     }
 
+    server.commands = dict_create();
+    server.ncmd_complete = 0;
+    populateCommandTable();
+
     createSharedObjects();
 
     /* light up background task runners */
@@ -99,6 +208,19 @@ void rr_server_init(rr_configuration *cfg) {
 error:
     rr_log(RR_LOG_CRITICAL, server.err);
     exit(1);
+}
+
+struct redisCommand *cmd_lookup(sds name) {
+    return dict_get(server.commands, name);
+}
+
+struct redisCommand *cmd_lookup_cstr(char *s) {
+    struct redisCommand *cmd;
+    sds name = sdsnew(s);
+
+    cmd = dict_get(server.commands, name);
+    sdsfree(name);
+    return cmd;
 }
 
 void rr_server_close(void) {
@@ -111,7 +233,9 @@ static void rr_server_close_listening_sockets() {
 }
 
 int rr_server_prepare_to_shutdown(void) {
+    rr_log(RR_LOG_INFO, "User required to shutdown the service, preparing...");
     rr_server_close_listening_sockets();
+    rr_log(RR_LOG_INFO, "Ready to exit, bye!");
     return RR_OK;
 }
 
@@ -316,7 +440,110 @@ static int process_inline_input(rr_client_t *c) {
 static void process_user_input(rr_client_t *c) {
     while (sdslen(c->query)) {
        if (process_inline_input(c) != RR_OK) break;
+
+        /* Multibulk processing could see a <= 0 length. */
+        if (c->argc == 0) {
+            client_reset(c);
+        } else {
+            /* Only reset the client when the command was executed. */
+            if (cmd_process(c) == RR_OK)
+                client_reset(c);
+        }
     }
+}
+
+/* If this function gets called we already read a whole
+ * command, arguments are in the client argv/argc fields.
+ * cmd_process() execute the command or prepare the
+ * server for a bulk read from the client.
+ *
+ * If RR_OK is returned the client is still alive and valid and
+ * other operations can be performed by the caller. Otherwise
+ * if RR_ERROR is returned the client was destroyed (i.e. after QUIT). */
+static int cmd_process(rr_client_t *c) {
+    /* The QUIT command is handled separately. Normal command procs will
+     * go through checking for replication and QUIT will cause trouble
+     * when FORCE_REPLICATION is enabled and would be implemented in
+     * a regular command proc. */
+    if (!strcasecmp(c->argv[0]->ptr, "quit")) {
+        reply_add_obj(c, shared.ok);
+        c->flags |= CLIENT_CLOSE_AFTER_REPLY;
+        return RR_ERROR;
+    }
+
+    /* Now lookup the command and check ASAP about trivial error conditions
+     * such as wrong arity, bad command name and so forth. */
+    c->cmd = c->lastcmd = cmd_lookup(c->argv[0]->ptr);
+    if (!c->cmd) {
+        reply_add_err_format(c, "unknown command '%s'",
+            (char*) c->argv[0]->ptr);
+        return RR_OK;
+    } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
+               (c->argc < -c->cmd->arity)) {
+        reply_add_err_format(c,"wrong number of arguments for '%s' command",
+            c->cmd->name);
+        return RR_OK;
+    }
+
+    call(c, CMD_CALL_FULL);
+    return RR_OK;
+}
+
+/* Call() is the core of Redis execution of a command.
+ *
+ * The following flags can be passed:
+ * CMD_CALL_NONE        No flags.
+ * CMD_CALL_SLOWLOG     Check command speed and log in the slow log if needed.
+ * CMD_CALL_STATS       Populate command stats.
+ * CMD_CALL_PROPAGATE_AOF   Append command to AOF if it modified the dataset
+ *                          or if the client flags are forcing propagation.
+ * CMD_CALL_PROPAGATE_REPL  Send command to salves if it modified the dataset
+ *                          or if the client flags are forcing propagation.
+ * CMD_CALL_PROPAGATE   Alias for PROPAGATE_AOF|PROPAGATE_REPL.
+ * CMD_CALL_FULL        Alias for SLOWLOG|STATS|PROPAGATE.
+ *
+ * The exact propagation behavior depends on the client flags.
+ * Specifically:
+ *
+ * 1. If the client flags CLIENT_FORCE_AOF or CLIENT_FORCE_REPL are set
+ *    and assuming the corresponding CMD_CALL_PROPAGATE_AOF/REPL is set
+ *    in the call flags, then the command is propagated even if the
+ *    dataset was not affected by the command.
+ * 2. If the client flags CLIENT_PREVENT_REPL_PROP or CLIENT_PREVENT_AOF_PROP
+ *    are set, the propagation into AOF or to slaves is not performed even
+ *    if the command modified the dataset.
+ *
+ * Note that regardless of the client flags, if CMD_CALL_PROPAGATE_AOF
+ * or CMD_CALL_PROPAGATE_REPL are not set, then respectively AOF or
+ * slaves propagation will never occur.
+ *
+ * Client flags are modified by the implementation of a given command
+ * using the following API:
+ *
+ * forceCommandPropagation(client *c, int flags);
+ * preventCommandPropagation(client *c);
+ * preventCommandAOF(client *c);
+ * preventCommandReplication(client *c);
+ *
+ */
+static void call(rr_client_t *c, int flags) {
+    long long start, duration;
+
+    /* Call the command. */
+    start = rr_dt_ustime();
+    c->cmd->proc(c);
+    duration = rr_dt_ustime() - start;
+    if (flags & CMD_CALL_STATS) {
+        c->lastcmd->microseconds += duration;
+        c->lastcmd->calls++;
+    }
+
+    server.ncmd_complete++;
+}
+
+/* client_reset prepare the client to process the next command */
+void client_reset(rr_client_t *c) {
+    free_client_argv(c);
 }
 
 static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask) {
@@ -355,7 +582,6 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
     process_user_input(c);
 }
 
-
 /* Client.reply list dup and free methods */
 static void *list_reply_dup(void *val) {
     return sdsdup(val);
@@ -383,6 +609,7 @@ rr_client_t *rr_client_create(int fd) {
     c->query = sdsempty();
     c->argc = 0;
     c->argv = NULL;
+    c->cmd = c->lastcmd = NULL;
     c->db = *server.dbs;  /* use db 0 by default */
     c->replied_len = 0;
     c->buf_sent_len = 0;
@@ -417,6 +644,7 @@ static void free_client_argv(rr_client_t *c) {
     for (i = 0; i < c->argc; i++)
         decrRefCount(c->argv[i]);
     c->argc = 0;
+    c->cmd = NULL;
 }
 
 void rr_client_free(rr_client_t *c) {

@@ -41,15 +41,20 @@ struct rr_server_t {
     size_t stats_memory_usage;         /* current memory usage */
     rrdb_t **dbs;                      /* db array */
     int max_dbs;                       /* max number of databases */
+    dict_t *commands;                  /* all commands */
+    long long ncmd_complete;           /* number of command executed */
     list *clients;                     /* list of clients */
     list *clients_with_pending_writes; /* list of clients with pending writes */
     list *clients_to_close;            /* list of closable clients */
 };
 
+struct redisCommand;
 typedef struct rr_client_t {
     int fd;                        /* client file descriptor */
     sds query;                     /* query buffer */
     list *reply;                   /* reply list */
+    struct redisCommand *cmd;      /* current cmd */
+    struct redisCommand *lastcmd;  /* last cmd */
     int flags;                     /* client flags */
     int argc;                      /* number of arguments of current command. */
     robj **argv;                   /* arguments of the current command. */
@@ -60,6 +65,50 @@ typedef struct rr_client_t {
     char buf[PROTO_REPLY_MAX_LEN]; /* output buffer */
 } rr_client_t;
 
+/* Command flags. Please check the command table defined in the redis.c file
+ * for more information about the meaning of every flag. */
+#define CMD_WRITE 1                   /* "w" flag */
+#define CMD_READONLY 2                /* "r" flag */
+#define CMD_DENYOOM 4                 /* "m" flag */
+#define CMD_NOT_USED_1 8              /* no longer used flag */
+#define CMD_ADMIN 16                  /* "a" flag */
+#define CMD_PUBSUB 32                 /* "p" flag */
+#define CMD_NOSCRIPT  64              /* "s" flag */
+#define CMD_RANDOM 128                /* "R" flag */
+#define CMD_SORT_FOR_SCRIPT 256       /* "S" flag */
+#define CMD_LOADING 512               /* "l" flag */
+#define CMD_STALE 1024                /* "t" flag */
+#define CMD_SKIP_MONITOR 2048         /* "M" flag */
+#define CMD_ASKING 4096               /* "k" flag */
+#define CMD_FAST 8192                 /* "F" flag */
+
+/* Command call flags, see call() function */
+#define CMD_CALL_NONE 0
+#define CMD_CALL_SLOWLOG (1<<0)
+#define CMD_CALL_STATS (1<<1)
+#define CMD_CALL_PROPAGATE_AOF (1<<2)
+#define CMD_CALL_PROPAGATE_REPL (1<<3)
+#define CMD_CALL_PROPAGATE (CMD_CALL_PROPAGATE_AOF|CMD_CALL_PROPAGATE_REPL)
+#define CMD_CALL_FULL (CMD_CALL_SLOWLOG | CMD_CALL_STATS | CMD_CALL_PROPAGATE)
+
+typedef void redisCommandProc(rr_client_t *c);
+typedef int *redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, int *numkeys);
+struct redisCommand {
+    char *name;
+    redisCommandProc *proc;
+    int arity;
+    char *sflags; /* Flags as string representation, one char per flag. */
+    int flags;    /* The actual flags, obtained from the 'sflags' field. */
+    /* Use a function to determine keys arguments in a command line.
+     *      * Used for Redis Cluster redirect. */
+    redisGetKeysProc *getkeys_proc;
+    /* What keys should be loaded in background when calling this command? */
+    int firstkey; /* The first argument that's a key (0 = no keys) */
+    int lastkey;  /* The last argument that's a key */
+    int keystep;  /* The step between first and last key */
+    long long microseconds, calls;
+};
+
 struct rr_configuration;
 void rr_server_init(struct rr_configuration *cfg);
 void rr_server_close(void);
@@ -68,12 +117,18 @@ int rr_server_prepare_to_shutdown(void);
 
 rr_client_t *rr_client_create(int fd);
 void rr_client_free(rr_client_t *c);
+void client_reset(rr_client_t *c);
+
+/* command look up */
+struct redisCommand *cmd_lookup(sds name);
+struct redisCommand *cmd_lookup_cstr(char *s);
 
 /* Replying related functions */
 void reply_add_obj(rr_client_t *c, robj *obj);
 void reply_add_str(rr_client_t *c, const char *s, size_t len);
 void reply_add_err_len(rr_client_t *c, const char *s, size_t len);
 void reply_add_err(rr_client_t *c, const char *err);
+void reply_add_err_format(rr_client_t *c, const char *fmt, ...);
 void reply_add_sds(rr_client_t *c, sds s);
 void reply_add_longlong(rr_client_t *c, long long ll);
 void reply_add_bulk_obj(rr_client_t *c, robj *obj);

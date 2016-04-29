@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <math.h>
+#include <stdarg.h>
 
 static int prepare_client_to_write(rr_client_t *c);
 static int add_reply_to_buffer(rr_client_t *c, const char *s, size_t len);
@@ -180,6 +181,22 @@ void reply_add_err_len(rr_client_t *c, const char *s, size_t len) {
     reply_add_str(c, "-ERR ", 5);
     reply_add_str(c, s, len);
     reply_add_str(c, "\r\n", 2);
+}
+
+void reply_add_err_format(rr_client_t *c, const char *fmt, ...) {
+    size_t l, j;
+    va_list ap;
+    va_start(ap,fmt);
+    sds s = sdscatvprintf(sdsempty(), fmt, ap);
+    va_end(ap);
+    /* Make sure there are no newlines in the string, otherwise invalid protocol
+     * is emitted. */
+    l = sdslen(s);
+    for (j = 0; j < l; j++) {
+        if (s[j] == '\r' || s[j] == '\n') s[j] = ' ';
+    }
+    reply_add_err_len(c, s, sdslen(s));
+    sdsfree(s);
 }
 
 void reply_add_err(rr_client_t *c, const char *err) {

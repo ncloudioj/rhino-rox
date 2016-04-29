@@ -36,3 +36,17 @@ bool rr_dt_is_past(long sec, long ms) {
     else
         return false;
 }
+
+long long rr_dt_ustime(void) {
+    struct timeval tv;
+    long long ust;
+
+    gettimeofday(&tv, NULL);
+    ust = ((long long)tv.tv_sec)*1000000;
+    ust += tv.tv_usec;
+    return ust;
+}
+
+mstime_t rr_dt_mstime(void) {
+    return rr_dt_ustime()/1000;
+}
