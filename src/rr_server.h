@@ -6,6 +6,7 @@
 #include "adlist.h"
 #include "sds.h"
 #include "robj.h"
+#include "rr_db.h"
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -34,9 +35,12 @@ struct rr_server_t {
     unsigned long long max_memory;     /* max number of memory bytes to use */
     int hz;                            /* frequency of server cron */
     int lpfd;                          /* file descriptor for the listen socket */
+    int lazyfree_server_del;           /* whether or not delete objects lazily */
     int shutdown;                      /* signal server to shutdown */
     size_t client_max_query_len;       /* max length for client query buffer */
     size_t stats_memory_usage;         /* current memory usage */
+    rrdb_t **dbs;                      /* db array */
+    int max_dbs;                       /* max number of databases */
     list *clients;                     /* list of clients */
     list *clients_with_pending_writes; /* list of clients with pending writes */
     list *clients_to_close;            /* list of closable clients */
@@ -49,6 +53,7 @@ typedef struct rr_client_t {
     int flags;                     /* client flags */
     int argc;                      /* number of arguments of current command. */
     robj **argv;                   /* arguments of the current command. */
+    rrdb_t *db;                    /* current databasee */
     size_t replied_len;            /* total length of bytes already replied */
     size_t buf_sent_len;           /* length of bytes sent in the buffer */
     int buf_offset;                /* output buffer offset */

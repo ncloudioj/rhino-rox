@@ -27,6 +27,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef ROBJ_H
+#define ROBJ_H ROBJ_H
+
 #include "sds.h"
 
 #include <limits.h>
@@ -112,3 +115,5 @@ robj *createStringObjectFromLongDouble(long double value, int humanfriendly);
 robj *createHashObject(void);
 
 extern struct sharedObjectsStruct shared;
+
+#endif /* ifndef ROBJ_H */

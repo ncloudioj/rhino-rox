@@ -159,6 +159,18 @@ static int handler(void *config,
             err = "Invalid value for tcp_backlog";
             goto error;
         }
+    } else if (MATCH("lazyfree", "server_del")) {
+        cfg->lazyfree_server_del = atoi(value);
+        if (cfg->port < 0) {
+            err = "Invalid value for server_del";
+            goto error;
+        }
+    } else if (MATCH("database", "max_dbs")) {
+        cfg->max_dbs = atoi(value);
+        if (cfg->port < 0) {
+            err = "Invalid value for max_dbs";
+            goto error;
+        }
     } else {
         snprintf(msg, sizeof(msg), "Unknown item: \"%s\" in section: [%s]", name, section);
         err = msg;

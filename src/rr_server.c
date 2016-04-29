@@ -8,6 +8,7 @@
 #include "rr_config.h"
 #include "rr_malloc.h"
 #include "rr_bgtask.h"
+#include "rr_db.h"
 #include "ini.h"
 
 #include <assert.h>
@@ -50,12 +51,16 @@ static void rr_server_signal(void) {
 }
 
 void rr_server_init(rr_configuration *cfg) {
+    int i;
+
     rr_log_set_log_level(cfg->log_level);
     rr_log_set_log_file(cfg->log_file);
 
     server.shutdown = 0;
     server.max_memory = cfg->max_memory;
     server.max_clients = cfg->max_clients;
+    server.max_dbs = cfg->max_dbs;
+    server.lazyfree_server_del = cfg->lazyfree_server_del;
     rr_server_adjust_max_clients();
     server.hz = cfg->cron_frequency;
     server.served = 0;
@@ -80,6 +85,12 @@ void rr_server_init(rr_configuration *cfg) {
     server.clients = listCreate();
     server.clients_with_pending_writes = listCreate();
     server.clients_to_close = listCreate();
+    
+    server.dbs = rr_malloc(sizeof(rrdb_t*)*server.max_dbs);
+    for (i = 0; i < server.max_dbs; i++) {
+        server.dbs[i] = rr_db_create(i);
+    }
+
     createSharedObjects();
 
     /* light up background task runners */
@@ -372,6 +383,7 @@ rr_client_t *rr_client_create(int fd) {
     c->query = sdsempty();
     c->argc = 0;
     c->argv = NULL;
+    c->db = *server.dbs;  /* use db 0 by default */
     c->replied_len = 0;
     c->buf_sent_len = 0;
     c->reply = listCreate();

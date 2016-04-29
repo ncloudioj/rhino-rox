@@ -11,6 +11,7 @@
 #include "rr_logging.h"
 #include "rr_malloc.h"
 #include "adlist.h"
+#include "robj.h"
 
 #define THREAD_STACK_SIZE (4 * 1024 * 1024)
 
@@ -92,8 +93,13 @@ static void *thread_handler(void *arg) {
 
         /* process the task based on its type. */
         if (type == TASK_LAZY_FREE) {
-            /* TODO: add lazy free dispatcher here */
-            rr_log(RR_LOG_INFO, "Echoing from background thread %d", type);
+            switch (task->sub_type) {
+                case SUBTYPE_FREE_OBJ:
+                    decrRefCount(task->arg);
+                    break;
+                default:
+                    rr_log(RR_LOG_WARNING, "Unknown lazy free sub_type  %d", task->sub_type);
+            }
         }
         rr_free(task);
 

@@ -22,6 +22,8 @@ typedef struct rr_configuration {
     int log_level;
     char *log_file;
     int tcp_backlog;
+    int lazyfree_server_del;
+    int max_dbs;
 } rr_configuration;
 
 int rr_config_load(const char *path, rr_configuration *cfg);
