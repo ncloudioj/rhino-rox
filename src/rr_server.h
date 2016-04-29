@@ -5,6 +5,7 @@
 #include "rr_event.h"
 #include "adlist.h"
 #include "sds.h"
+#include "robj.h"
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -46,6 +47,8 @@ typedef struct rr_client_t {
     sds query;                     /* query buffer */
     list *reply;                   /* reply list */
     int flags;                     /* client flags */
+    int argc;                      /* number of arguments of current command. */
+    robj **argv;                   /* arguments of the current command. */
     size_t replied_len;            /* total length of bytes already replied */
     size_t buf_sent_len;           /* length of bytes sent in the buffer */
     int buf_offset;                /* output buffer offset */
@@ -62,16 +65,34 @@ rr_client_t *rr_client_create(int fd);
 void rr_client_free(rr_client_t *c);
 
 /* Replying related functions */
+void reply_add_obj(rr_client_t *c, robj *obj);
 void reply_add_str(rr_client_t *c, const char *s, size_t len);
 void reply_add_err_len(rr_client_t *c, const char *s, size_t len);
 void reply_add_err(rr_client_t *c, const char *err);
 void reply_add_sds(rr_client_t *c, sds s);
+void reply_add_longlong(rr_client_t *c, long long ll);
+void reply_add_bulk_obj(rr_client_t *c, robj *obj);
+void reply_add_bulk_cbuf(rr_client_t *c, const void *p, size_t len);
+void reply_add_bulk_sds(rr_client_t *c, sds s);
+void reply_add_bulk_cstr(rr_client_t *c, const char *s);
+void reply_add_bulk_longlong(rr_client_t *c, long long ll);
+int check_obj_type(rr_client_t *c, robj *o, int type);
+
 int reply_write_to_client(int fd, rr_client_t *c, int handler_installed);
 
 /* Callback for write event */
 void reply_write_callback(eventloop_t *el, int fd, void *ud, int mask);
 
 bool client_has_pending_replies(rr_client_t *c);
+
+
+void objectCommand(rr_client_t *c);
+
+int getDoubleFromObject(robj *o, double *target);
+int getDoubleFromObjectOrReply(rr_client_t *c, robj *o, double *target, const char *msg);
+int getLongLongFromObject(robj *o, long long *target);
+int getLongDoubleFromObject(robj *o, long double *target);
+int getLongDoubleFromObjectOrReply(rr_client_t *c, robj *o, long double *target, const char *msg);
 
 /* declare the global server variable */
 extern struct rr_server_t server;

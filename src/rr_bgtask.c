@@ -1,3 +1,5 @@
+#include "rr_ftmacro.h"
+
 #include <pthread.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -53,7 +55,7 @@ static void *thread_handler(void *arg) {
     list *task_queue;
     pthread_mutex_t *lock;
     pthread_cond_t *cond;
-    int type = (int) arg;
+    unsigned long type = (unsigned long) arg;
 
     if (type >= TASK_NTYPES) {
         rr_log(RR_LOG_ERROR,

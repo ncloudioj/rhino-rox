@@ -80,6 +80,7 @@ void rr_server_init(rr_configuration *cfg) {
     server.clients = listCreate();
     server.clients_with_pending_writes = listCreate();
     server.clients_to_close = listCreate();
+    createSharedObjects();
 
     /* light up background task runners */
     rr_bgt_init();
@@ -249,7 +250,8 @@ static void before_polling(eventloop_t *el) {
 /* It does nothing except echoing the query now */
 static int process_inline_input(rr_client_t *c) {
     char *newline;
-    sds aux;
+    int i, argc;
+    sds *argv, aux;
     size_t querylen;
 
     /* Search for end of line */
@@ -270,11 +272,33 @@ static int process_inline_input(rr_client_t *c) {
     /* Split the input buffer up to the \r\n */
     querylen = newline - c->query;
     aux = sdsnewlen(c->query, querylen);
-    reply_add_sds(c, aux);
+    argv = sdssplitargs(aux, &argc);
+    sdsfree(aux);
+
+    if (argv == NULL) {
+        reply_add_err(c, "Protocol error: unbalanced quotes in request");
+        return RR_ERROR;
+    }
 
     /* Slice the query buffer to delete the processed line */
     sdsrange(c->query, querylen+2, -1);
 
+    if (argc) {
+        if (c->argv) rr_free(c->argv);
+        c->argv = rr_malloc(sizeof(robj*)*argc);
+    }
+
+    /* Create redis objects for all arguments. */
+    for (c->argc = 0, i = 0; i < argc; i++) {
+        if (sdslen(argv[i])) {
+            c->argv[c->argc] = createObject(OBJ_STRING, argv[i]);
+            c->argc++;
+        } else {
+            sdsfree(argv[i]);
+        }
+    }
+    reply_add_longlong(c, argc);
+    rr_free(argv);
     return RR_OK;
 }
 
@@ -346,6 +370,8 @@ rr_client_t *rr_client_create(int fd) {
 
     c->fd = fd;
     c->query = sdsempty();
+    c->argc = 0;
+    c->argv = NULL;
     c->replied_len = 0;
     c->buf_sent_len = 0;
     c->reply = listCreate();
@@ -374,10 +400,18 @@ static void unlink_client(rr_client_t *c) {
     }
 }
 
+static void free_client_argv(rr_client_t *c) {
+    int i;
+    for (i = 0; i < c->argc; i++)
+        decrRefCount(c->argv[i]);
+    c->argc = 0;
+}
+
 void rr_client_free(rr_client_t *c) {
     unlink_client(c);
     sdsfree(c->query);
     listRelease(c->reply);
+    free_client_argv(c);
     rr_free(c);
 }
 
@@ -412,6 +446,14 @@ static void add_client(int fd, int flags, char *ip) {
     c->flags |= flags;
 }
 
+int check_obj_type(rr_client_t *c, robj *o, int type) {
+    if (o->type != type) {
+        reply_add_obj(c, shared.wrongtypeerr);
+        return 1;
+    }
+    return 0;
+}
+
 static void handle_accept(eventloop_t *el, int fd, void *ud, int mask) {
     int cport, cfd, max = RR_NET_MAXACCEPT;
     char cip[RR_NET_MAXIPLEN];
@@ -430,6 +472,40 @@ static void handle_accept(eventloop_t *el, int fd, void *ud, int mask) {
         add_client(cfd, 0, cip);
     }
 }
+
+/* This is a helper function for the OBJECT command. We need to lookup keys
+ * without any modification of LRU or other parameters. */
+/*  robj *objectCommandLookup(rr_client_t *c, robj *key) { */
+    /*  dictEntry *de; */
+
+    /*  if ((de = dictFind(c->db->dict,key->ptr)) == NULL) return NULL; */
+    /*  return (robj*) dictGetVal(de); */
+/*  } */
+
+/*  robj *objectCommandLookupOrReply(rr_client_t *c, robj *key, robj *reply) { */
+    /*  robj *o = objectCommandLookup(c,key); */
+
+    /*  if (!o) reply_add_obj(c, reply); */
+    /*  return o; */
+/*  } */
+
+/* Object command allows to inspect the internals of an Redis Object.
+ * Usage: OBJECT <refcount|encoding|idletime> <key> */
+/*  void objectCommand(rr_client_t *c) { */
+    /*  robj *o; */
+
+    /*  if (!strcasecmp(c->argv[1]->ptr,"refcount") && c->argc == 3) { */
+        /*  if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.nullbulk)) */
+                /*  == NULL) return; */
+        /*  reply_add_longlong(c,o->refcount); */
+    /*  } else if (!strcasecmp(c->argv[1]->ptr,"encoding") && c->argc == 3) { */
+        /*  if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.nullbulk)) */
+                /*  == NULL) return; */
+        /*  reply_add_bulk_cstr(c, strEncoding(o->encoding)); */
+    /*  } else { */
+        /*  reply_add_err(c,"Syntax error. Try OBJECT (refcount|encoding|idletime)"); */
+    /*  } */
+/*  } */
 
 int main(int argc, char *argv[]) {
     UNUSED(argc);

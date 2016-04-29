@@ -2,10 +2,14 @@
 #include "rr_logging.h"
 #include "rr_rhino_rox.h"
 #include "rr_malloc.h"
+#include "util.h"
 
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <ctype.h>
+#include <assert.h>
+#include <math.h>
 
 static int prepare_client_to_write(rr_client_t *c);
 static int add_reply_to_buffer(rr_client_t *c, const char *s, size_t len);
@@ -54,6 +58,31 @@ static int add_reply_to_buffer(rr_client_t *c, const char *s, size_t len) {
     memcpy(c->buf+c->buf_offset, s, len);
     c->buf_offset += len;
     return RR_OK;
+}
+
+static void add_reply_object_to_list(rr_client_t *c, robj *o) {
+    if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return;
+
+    if (listLength(c->reply) == 0) {
+        sds s = sdsdup(o->ptr);
+        listAddNodeTail(c->reply,s);
+        c->replied_len += sdslen(s);
+    } else {
+        listNode *ln = listLast(c->reply);
+        sds tail = listNodeValue(ln);
+
+        /* Append to this object when possible. If tail == NULL it was
+         * set via addDeferredMultiBulkLength(). */
+        if (tail && sdslen(tail)+sdslen(o->ptr) <= PROTO_REPLY_MAX_LEN) {
+            tail = sdscatsds(tail,o->ptr);
+            listNodeValue(ln) = tail;
+            c->replied_len += sdslen(o->ptr);
+        } else {
+            sds s = sdsdup(o->ptr);
+            listAddNodeTail(c->reply,s);
+            c->replied_len += sdslen(s);
+        }
+    }
 }
 
 /* This method takes responsibility on the sds. When it is no longer
@@ -106,6 +135,41 @@ void add_reply_str_to_list(rr_client_t *c, const char *s, size_t len) {
     }
 }
 
+void reply_add_obj(rr_client_t *c, robj *obj) {
+    if (prepare_client_to_write(c) != RR_OK) return;
+
+    /* This is an important place where we can avoid copy-on-write
+     * when there is a saving child running, avoiding touching the
+     * refcount field of the object if it's not needed.
+     *
+     * If the encoding is RAW and there is room in the static buffer
+     * we'll be able to send the object to the client without
+     * messing with its page. */
+    if (sdsEncodedObject(obj)) {
+        if (add_reply_to_buffer(c, obj->ptr, sdslen(obj->ptr)) != RR_OK)
+            add_reply_object_to_list(c, obj);
+    } else if (obj->encoding == OBJ_ENCODING_INT) {
+        /* Optimization: if there is room in the static buffer for 32 bytes
+         * (more than the max chars a 64 bit integer can take as string) we
+         * avoid decoding the object and go for the lower level approach. */
+        if (listLength(c->reply) == 0 && (sizeof(c->buf) - c->buf_offset) >= 32) {
+            char buf[32];
+            int len;
+
+            len = ll2string(buf, sizeof(buf), (long)obj->ptr);
+            if (add_reply_to_buffer(c, buf, len) == RR_OK) return;
+            /* else... continue with the normal code path, but should never
+             * happen actually since we verified there is room. */
+        }
+        obj = getDecodedObject(obj);
+        if (add_reply_to_buffer(c, obj->ptr, sdslen(obj->ptr)) != RR_OK)
+            add_reply_object_to_list(c, obj);
+        decrRefCount(obj);
+    } else {
+        assert(0);
+    }
+}
+
 void reply_add_str(rr_client_t *c, const char *s, size_t len) {
     if (prepare_client_to_write(c) != RR_OK) return;
     if (add_reply_to_buffer(c, s, len) != RR_OK)
@@ -124,7 +188,7 @@ void reply_add_err(rr_client_t *c, const char *err) {
 
 void reply_add_sds(rr_client_t *c, sds s) {
     if (prepare_client_to_write(c) != RR_OK) {
-        /* The caller expects the sds to be free'd. */
+        /* The caller expects the sds to be freed. */
         sdsfree(s);
         return;
     }
@@ -134,6 +198,104 @@ void reply_add_sds(rr_client_t *c, sds s) {
         /* This method free's the sds when it is no longer needed. */
         add_reply_sds_to_list(c,s);
     }
+}
+
+/* Add a long long as integer reply or bulk len / multi bulk count.
+ * Basically this is used to output <prefix><long long><crlf>. */
+static void reply_add_longlong_with_prefix(rr_client_t *c, long long ll, char prefix) {
+    char buf[128];
+    int len;
+
+    if (prefix == '*' && ll < OBJ_SHARED_BULKHDR_LEN && ll >= 0) {
+        reply_add_obj(c, shared.mbulkhdr[ll]);
+        return;
+    } else if (prefix == '$' && ll < OBJ_SHARED_BULKHDR_LEN && ll >= 0) {
+        reply_add_obj(c, shared.bulkhdr[ll]);
+        return;
+    }
+
+    buf[0] = prefix;
+    len = ll2string(buf+1, sizeof(buf)-1, ll);
+    buf[len+1] = '\r';
+    buf[len+2] = '\n';
+    reply_add_str(c, buf, len+3);
+}
+
+void reply_add_longlong(rr_client_t *c, long long ll) {
+    reply_add_longlong_with_prefix(c, ll, ':');
+}
+
+void reply_add_multi_bulk_len(rr_client_t *c, long length) {
+    if (length < OBJ_SHARED_BULKHDR_LEN)
+        reply_add_obj(c, shared.mbulkhdr[length]);
+    else
+        reply_add_longlong_with_prefix(c, length, '*');
+}
+
+/* Create the length prefix of a bulk reply, example: $2234 */
+void reply_add_bulk_len(rr_client_t *c, robj *obj) {
+    size_t len;
+
+    if (sdsEncodedObject(obj)) {
+        len = sdslen(obj->ptr);
+    } else {
+        long n = (long) obj->ptr;
+
+        /* Compute how many bytes will take this integer as a radix 10 string */
+        len = 1;
+        if (n < 0) {
+            len++;
+            n = -n;
+        }
+        while((n = n/10) != 0) {
+            len++;
+        }
+    }
+
+    if (len < OBJ_SHARED_BULKHDR_LEN)
+        reply_add_obj(c,shared.bulkhdr[len]);
+    else
+        reply_add_longlong_with_prefix(c,len,'$');
+}
+
+/* Add a Redis Object as a bulk reply */
+void reply_add_bulk_obj(rr_client_t *c, robj *obj) {
+    reply_add_bulk_len(c, obj);
+    reply_add_obj(c, obj);
+    reply_add_obj(c, shared.crlf);
+}
+
+/* Add a C buffer as bulk reply */
+void reply_add_bulk_cbuf(rr_client_t *c, const void *p, size_t len) {
+    reply_add_longlong_with_prefix(c,len,'$');
+    reply_add_str(c, p, len);
+    reply_add_obj(c,shared.crlf);
+}
+
+/* Add sds to reply (takes ownership of sds and frees it) */
+void reply_add_bulk_sds(rr_client_t *c, sds s)  {
+    reply_add_sds(c, sdscatfmt(sdsempty(), "$%u\r\n",
+        (unsigned long) sdslen(s)));
+    reply_add_sds(c, s);
+    reply_add_obj(c, shared.crlf);
+}
+
+/* Add a C nul term string as bulk reply */
+void reply_add_bulk_cstr(rr_client_t *c, const char *s) {
+    if (s == NULL) {
+        reply_add_obj(c, shared.nullbulk);
+    } else {
+        reply_add_bulk_cbuf(c, s, strlen(s));
+    }
+}
+
+/* Add a long long as a bulk reply */
+void reply_add_bulk_longlong(rr_client_t *c, long long ll) {
+    char buf[64];
+    int len;
+
+    len = ll2string(buf, 64, ll);
+    reply_add_bulk_cbuf(c, buf, len);
 }
 
 /* Write data in output buffers to client. Return RR_OK if the client
@@ -215,4 +377,148 @@ void reply_write_callback(eventloop_t *el, int fd, void *ud, int mask) {
     UNUSED(el);
     UNUSED(mask);
     reply_write_to_client(fd, ud, 1);
+}
+
+int getDoubleFromObject(robj *o, double *target) {
+    double value;
+    char *eptr;
+
+    if (o == NULL) {
+        value = 0;
+    } else {
+        assert(o->type == OBJ_STRING);
+        if (sdsEncodedObject(o)) {
+            errno = 0;
+            value = strtod(o->ptr, &eptr);
+            if (isspace(((char*)o->ptr)[0]) ||
+                eptr[0] != '\0' ||
+                (errno == ERANGE &&
+                    (value == HUGE_VAL || value == -HUGE_VAL || value == 0)) ||
+                errno == EINVAL ||
+                isnan(value))
+                return RR_ERROR;
+        } else if (o->encoding == OBJ_ENCODING_INT) {
+            value = (long) o->ptr;
+        } else {
+            assert(0);
+        }
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getDoubleFromObjectOrReply(rr_client_t *c, robj *o, double *target, const char *msg) {
+    double value;
+    if (getDoubleFromObject(o, &value) != RR_OK) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*) msg);
+        } else {
+            reply_add_err(c,"value is not a valid float");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getLongDoubleFromObject(robj *o, long double *target) {
+    long double value;
+    char *eptr;
+
+    if (o == NULL) {
+        value = 0;
+    } else {
+        assert(o->type == OBJ_STRING);
+        if (sdsEncodedObject(o)) {
+            errno = 0;
+            value = strtold(o->ptr, &eptr);
+            if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
+                errno == ERANGE || isnan(value))
+                return RR_ERROR;
+        } else if (o->encoding == OBJ_ENCODING_INT) {
+            value = (long)o->ptr;
+        } else {
+            rr_log(RR_LOG_ERROR,"Unknown string encoding");
+            return RR_ERROR;
+        }
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getLongDoubleFromObjectOrReply(rr_client_t *c, robj *o, long double *target, const char *msg) {
+    long double value;
+    if (getLongDoubleFromObject(o, &value) != RR_OK) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*)msg);
+        } else {
+            reply_add_err(c,"value is not a valid float");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
+}
+
+/* Helper function for getLongLongFromObject(). The function parses the string
+ * as a long long value in a strict way (no spaces before/after). On success
+ * RR_OK is returned, otherwise RR_ERROR is returned. */
+int strict_strtoll(char *str, long long *vp) {
+    char *eptr;
+    long long value;
+
+    errno = 0;
+    value = strtoll(str, &eptr, 10);
+    if (isspace(str[0]) || eptr[0] != '\0' || errno == ERANGE) return RR_ERROR;
+    if (vp) *vp = value;
+    return RR_OK;
+}
+
+int getLongLongFromObject(robj *o, long long *target) {
+    long long value;
+
+    if (o == NULL) {
+        value = 0;
+    } else {
+        assert(o->type == OBJ_STRING);
+        if (sdsEncodedObject(o)) {
+            if (strict_strtoll(o->ptr,&value) == RR_ERROR) return RR_ERROR;
+        } else if (o->encoding == OBJ_ENCODING_INT) {
+            value = (long)o->ptr;
+        } else {
+            rr_log(RR_LOG_ERROR,"Unknown string encoding");
+        }
+    }
+    if (target) *target = value;
+    return RR_OK;
+}
+
+int getLongLongFromObjectOrReply(rr_client_t *c, robj *o, long long *target, const char *msg) {
+    long long value;
+    if (getLongLongFromObject(o, &value) != RR_OK) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*)msg);
+        } else {
+            reply_add_err(c,"value is not an integer or out of range");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getLongFromObjectOrReply(rr_client_t *c, robj *o, long *target, const char *msg) {
+    long long value;
+
+    if (getLongLongFromObjectOrReply(c, o, &value, msg) != RR_OK) return RR_ERROR;
+    if (value < LONG_MIN || value > LONG_MAX) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*)msg);
+        } else {
+            reply_add_err(c,"value is out of range");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
 }
