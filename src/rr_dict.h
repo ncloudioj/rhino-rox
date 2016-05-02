@@ -15,6 +15,9 @@ typedef struct dict_kv_t {
     void *value;
 } dict_kv_t;
 
+#define DICT_KEY 1
+#define DICT_VAL 2
+
 dict_t *dict_create(void);
 void dict_free(dict_t *dict);
 bool dict_empty(dict_t *dict);

@@ -6,17 +6,14 @@
 #include "rr_bgtask.h"
 
 #include <stdlib.h>
-
-static void free_obj_callback(void *value) {
-    decrRefCount(value);
-}
+#include <string.h>
 
 rrdb_t *rr_db_create(int id) {
     rrdb_t *db;
 
     db = rr_malloc(sizeof(*db));
     db->dict = dict_create();
-    dict_set_freecb(db->dict, free_obj_callback);
+    dict_set_freecb(db->dict, rr_obj_free_callback);
     db->id = id;
 
     return db;
@@ -26,6 +23,8 @@ robj *rr_db_lookup(rrdb_t *db, robj *key) {
     return dict_get(db->dict, key->ptr);
 }
 
+/* Add a key/value pair to the database. Unlike rr_db_set_key,
+ * it won't increment the ref count of the value.*/
 bool rr_db_add(rrdb_t *db, robj *key, robj *val) {
     bool ret;
 
@@ -102,4 +101,67 @@ bool rr_db_del_async(rrdb_t *db, robj *key) {
     } else {
         return false;
     }
+}
+
+void rr_cmd_get(struct rr_client_t *c) {
+    robj *o;
+
+    if ((o=rr_db_lookup(c->db, c->argv[1])) == NULL) {
+        reply_add_bulk_obj(c, shared.nullbulk);
+        return;
+    }
+
+    if (o->type != OBJ_STRING)
+        reply_add_obj(c, shared.wrongtypeerr);
+    else
+        reply_add_bulk_obj(c, o); 
+}
+
+void rr_cmd_set(struct rr_client_t *c) {
+    /* If the lazyfree is required, explicitely try to delete the existing
+     * key. Otherwise, rr_db_set_key will overwrite the existing key in
+     * a sync way. */
+    if (server.lazyfree_server_del) rr_db_del(c->db, c->argv[1]);
+
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
+    if (rr_db_set_key(c->db, c->argv[1], c->argv[2]))
+        reply_add_obj(c, shared.ok);
+    else
+        reply_add_obj(c, shared.err);
+}
+
+void rr_cmd_len(struct rr_client_t *c) {
+    unsigned long l = dict_length(c->db->dict);
+    reply_add_longlong(c, l);
+}
+
+void rr_cmd_exists(struct rr_client_t *c) {
+    robj *reply;
+
+    reply = dict_contains(c->db->dict, c->argv[1]->ptr) ? shared.cone : shared.czero;
+    reply_add_obj(c, reply);
+}
+
+void rr_cmd_del(struct rr_client_t *c) {
+    robj *reply;
+
+    reply = rr_db_del(c->db, c->argv[1]) ? shared.cone : shared.czero;
+    reply_add_obj(c, reply);
+}
+
+void rr_cmd_type(struct rr_client_t *c) {
+    robj *o;
+    char *type;
+
+    o = rr_db_lookup(c->db, c->argv[1]);
+    if (o == NULL) {
+        type = "none";
+    } else {
+        switch(o->type) {
+        case OBJ_STRING: type = "string"; break;
+        case OBJ_HASH: type = "trie"; break;
+        default: type = "unknown"; break;
+        }
+    }
+    reply_add_status(c,type);
 }

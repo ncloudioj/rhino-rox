@@ -1,5 +1,6 @@
 #include "rr_cmd_admin.h"
 #include "rr_rhino_rox.h"
+#include "sds.h"
 
 #include <stdlib.h>
 
@@ -24,4 +25,9 @@ void rr_cmd_admin_echo(rr_client_t *c) {
 void rr_cmd_admin_shutdown(rr_client_t *c) {
     if (rr_server_prepare_to_shutdown() == RR_OK) exit(0);
     reply_add_err(c, "Errors trying to SHUTDOWN. Check logs.");
+}
+
+void rr_cmd_admin_info(rr_client_t *c) {
+    sds info = rr_server_get_info();
+    reply_add_bulk_sds(c, info);
 }

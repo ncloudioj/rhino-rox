@@ -113,6 +113,14 @@ robj *createStringObjectFromLongLong(long long value);
 robj *createStringObjectFromLongDouble(long double value, int humanfriendly);
 robj *createHashObject(void);
 
+/* The free callback function for dict_t */
+inline static void rr_obj_free_callback(void *value) {
+    decrRefCount(value);
+}
+
+struct rr_client_t;
+int checkType(struct rr_client_t *c, robj *o, int type);
+
 extern struct sharedObjectsStruct shared;
 
 #endif /* ifndef _RR_ROBJ_H */

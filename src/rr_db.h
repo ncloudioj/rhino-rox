@@ -20,4 +20,12 @@ bool rr_db_del(rrdb_t *db, robj *key);
 bool rr_db_del_sync(rrdb_t *db, robj *key);
 bool rr_db_del_async(rrdb_t *db, robj *key);
 
+struct rr_client_t;
+void rr_cmd_get(struct rr_client_t *c);
+void rr_cmd_set(struct rr_client_t *c);
+void rr_cmd_del(struct rr_client_t *c);
+void rr_cmd_len(struct rr_client_t *c);
+void rr_cmd_exists(struct rr_client_t *c);
+void rr_cmd_type(struct rr_client_t *c);
+
 #endif /* ifndef RR_DB_H */

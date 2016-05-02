@@ -203,6 +203,18 @@ void reply_add_err(rr_client_t *c, const char *err) {
     reply_add_err_len(c, err, strlen(err));
 }
 
+
+void reply_add_status_len(rr_client_t *c, const char *s, size_t len) {
+    reply_add_str(c,"+",1);
+    reply_add_str(c,s,len);
+    reply_add_str(c,"\r\n",2);
+}
+
+void reply_add_status(rr_client_t *c, const char *status) {
+    reply_add_status_len(c, status, strlen(status));
+}
+
+/* This function will take the ownership of the sds argument */
 void reply_add_sds(rr_client_t *c, sds s) {
     if (prepare_client_to_write(c) != RR_OK) {
         /* The caller expects the sds to be freed. */
@@ -284,9 +296,9 @@ void reply_add_bulk_obj(rr_client_t *c, robj *obj) {
 
 /* Add a C buffer as bulk reply */
 void reply_add_bulk_cbuf(rr_client_t *c, const void *p, size_t len) {
-    reply_add_longlong_with_prefix(c,len,'$');
+    reply_add_longlong_with_prefix(c, len, '$');
     reply_add_str(c, p, len);
-    reply_add_obj(c,shared.crlf);
+    reply_add_obj(c, shared.crlf);
 }
 
 /* Add sds to reply (takes ownership of sds and frees it) */

@@ -13,6 +13,9 @@
 #include "rr_cmd_trie.h"
 #include "rr_datetime.h"
 #include "ini.h"
+#include "adlist.h"
+#include "util.h"
+#include "sds.h"
 
 #include <assert.h>
 #include <signal.h>
@@ -89,15 +92,25 @@ static void call(rr_client_t *c, int flags);
  *    are not fast commands.
  */
 struct redisCommand redisCommandTable[] = {
-     {"rget",rr_cmd_rget,2,"rF",0,NULL,1,1,1,0,0},
-     {"rpget",rr_cmd_rpget,2,"rF",0,NULL,1,1,1,0,0},
-     {"rset",rr_cmd_rset,-3,"wm",0,NULL,1,1,1,0,0},
-     {"rdel",rr_cmd_rdel,-2,"w",0,NULL,1,-1,1,0,0},
-    /*  {"exists",existsCommand,-2,"rF",0,NULL,1,-1,1,0,0}, */
+    {"get",rr_cmd_get,2,"rF",0,NULL,1,1,1,0,0},
+    /* {"rpget",rr_cmd_pget,2,"rF",0,NULL,1,1,1,0,0}, */
+    {"len",rr_cmd_len,1,"rF",0,NULL,1,1,1,0,0},
+    {"set",rr_cmd_set,3,"wm",0,NULL,1,1,1,0,0},
+    {"del",rr_cmd_del,2,"wF",0,NULL,1,-1,1,0,0},
+    {"exists",rr_cmd_exists,2,"rF",0,NULL,1,-1,1,0,0},
+    {"rget",rr_cmd_rget,3,"rF",0,NULL,1,1,1,0,0},
+    {"rpget",rr_cmd_rpget,3,"rF",0,NULL,1,1,1,0,0},
+    {"rlen",rr_cmd_rlen,2,"rF",0,NULL,1,1,1,0,0},
+    {"rset",rr_cmd_rset,4,"wm",0,NULL,1,1,1,0,0},
+    {"rdel",rr_cmd_rdel,3,"wF",0,NULL,1,-1,1,0,0},
+    {"rexists",rr_cmd_rexists,3,"rF",0,NULL,1,-1,1,0,0},
+    /*  {"rgetall",rr_cmd_rgetall,1,"r",0,NULL,0,0,0,0,0}, */
     /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
+    {"type",rr_cmd_type,2,"rF",0,NULL,1,1,1,0,0},
     {"ping",rr_cmd_admin_ping,-1,"rtF",0,NULL,0,0,0,0,0},
     {"echo",rr_cmd_admin_echo,2,"rF",0,NULL,0,0,0,0,0},
     {"shutdown",rr_cmd_admin_shutdown,-1,"arlt",0,NULL,0,0,0,0,0},
+    {"info",rr_cmd_admin_info,0,"ar",0,NULL,0,0,0,0,0},
     /*  {"command",commandCommand,0,"rlt",0,NULL,0,0,0,0,0}, */
 };
 
@@ -210,6 +223,38 @@ void rr_server_init(rr_configuration *cfg) {
 error:
     rr_log(RR_LOG_CRITICAL, server.err);
     exit(1);
+}
+
+sds rr_server_get_info(void) {
+    char used_mem_human[64], max_mem_human[64], system_mem_human[64];
+    size_t used_mem = rr_get_used_memory();
+    size_t system_mem = rr_get_system_memory_size();
+    unsigned long long max_mem = server.max_memory ? server.max_memory : system_mem;
+    sds info = sdsempty();
+    
+    info = sdscatprintf(info,
+        "# Server\r\n"
+        "current_clients:%lu\r\n"
+        "clients_served:%lu\r\n"
+        "clients_rejected:%lu\r\n"
+        "\r\n",
+        listLength(server.clients), server.served, server.rejected);
+    
+    bytesToHuman(used_mem_human, used_mem);
+    bytesToHuman(system_mem_human, system_mem);
+    bytesToHuman(max_mem_human, max_mem);
+    info = sdscatprintf(info,
+        "# Memory\r\n"
+        "used_memory:%zu\r\n"
+        "used_memory_human:%s\r\n"
+        "system_memory:%zu\r\n"
+        "system_memory_human:%s\r\n"
+        "max_memory:%lld\r\n"
+        "max_memory_human:%s\r\n",
+        used_mem, used_mem_human, system_mem, system_mem_human,
+        max_mem, max_mem_human);
+
+    return info;
 }
 
 struct redisCommand *cmd_lookup(sds name) {

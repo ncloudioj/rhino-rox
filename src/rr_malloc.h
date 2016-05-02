@@ -10,5 +10,6 @@ void rr_free(void *ptr);
 char *rr_strdup(const char *s);
 void rr_set_oom_handler(void (*oom_handler)(size_t));
 size_t rr_get_used_memory(void);
+size_t rr_get_system_memory_size(void);
 
 #endif

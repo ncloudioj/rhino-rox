@@ -180,6 +180,7 @@ robj *dupStringObject(robj *o) {
 
 robj *createHashObject(void) {
     dict_t *dict = dict_create();
+    dict_set_freecb(dict, rr_obj_free_callback);
     robj *o = createObject(OBJ_HASH, dict);
     o->encoding = OBJ_ENCODING_HT;
     return o;
@@ -441,6 +442,14 @@ char *strEncoding(int encoding) {
     case OBJ_ENCODING_EMBSTR: return "embstr";
     default: return "unknown";
     }
+}
+
+int checkType(struct rr_client_t *c, robj *o, int type) {
+    if (o->type != type) {
+        reply_add_obj(c,shared.wrongtypeerr);
+        return 1;
+    }
+    return 0;
 }
 
 void createSharedObjects(void) {

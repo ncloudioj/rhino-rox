@@ -2,48 +2,122 @@
 #include "robj.h"
 #include "rr_db.h"
 #include "rr_dict.h"
+#include "rr_array.h"
+
+static robj *db_lookup_or_reply(rr_client_t *c, robj *key, robj *reply) {
+   robj *o;
+
+    if ((o=rr_db_lookup(c->db, key)) == NULL)
+        reply_add_bulk_obj(c, reply);
+    return o;
+}
+
+static robj *rset_lookup_or_create(rr_client_t *c, robj *key) {
+    robj *obj;
+
+    obj = rr_db_lookup(c->db, c->argv[1]);
+    if (!obj) {
+        obj = createHashObject();
+        rr_db_add(c->db, key, obj);
+    } else {
+        if (obj->type != OBJ_HASH) {
+            reply_add_obj(c, shared.wrongtypeerr); 
+            return NULL;
+        }
+    }
+    return obj;
+}
 
 void rr_cmd_rget(rr_client_t *c) {
-    robj *o;
+    robj *trie, *o;
 
-    if ((o=rr_db_lookup(c->db, c->argv[1])) == NULL) {
+    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+        checkType(c, trie, OBJ_HASH)) return;
+
+    if ((o = dict_get(trie->ptr, c->argv[2]->ptr)) == NULL)
         reply_add_bulk_obj(c, shared.nullbulk);
-        return;
-    }
-
-    if (o->type != OBJ_STRING) {
-        reply_add_obj(c, shared.wrongtypeerr);
-        return;
-    } else {
+    else
         reply_add_bulk_obj(c, o);
-        return;
-    }
+}
+
+void rr_cmd_rexists(rr_client_t *c) {
+    robj *trie;
+
+    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+        checkType(c, trie, OBJ_HASH)) return;
+
+    if (dict_contains(trie->ptr, c->argv[2]->ptr))
+        reply_add_obj(c, shared.cone);
+    else
+        reply_add_obj(c, shared.czero);
+}
+
+void rr_cmd_rlen(rr_client_t *c) {
+    robj *trie;
+    unsigned long len;
+
+    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+        checkType(c, trie, OBJ_HASH)) return;
+
+    len = dict_length(trie->ptr);
+    reply_add_longlong(c, len);
 }
 
 void rr_cmd_rset(rr_client_t *c) {
-    c->argv[2] = tryObjectEncoding(c->argv[2]);
-    if (rr_db_set_key(c->db, c->argv[1], c->argv[2]))
-        reply_add_obj(c, shared.ok);
-    else
-        reply_add_obj(c, shared.err);
+    robj *trie, *reply;
+
+    trie = rset_lookup_or_create(c, c->argv[1]);
+    if (!trie) return;
+    
+    c->argv[3] = tryObjectEncoding(c->argv[3]);
+    reply = dict_set(trie->ptr, c->argv[2]->ptr, c->argv[3]) ? \
+            shared.ok : shared.err;
+    reply_add_obj(c, reply);
+}
+
+static void get_prefix(rr_client_t *c, int flags) {
+    robj *trie;
+    dict_iterator_t *iter;
+    array_t *kvs;
+    long n = 0, multiplier = 0, i, total;
+
+    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+        checkType(c, trie, OBJ_HASH)) return;
+
+    if (flags & DICT_KEY) multiplier++;
+    if (flags & DICT_VAL) multiplier++;
+    
+    iter = dict_get_prefix(trie->ptr, c->argv[2]->ptr);
+    kvs = array_create(8, sizeof(dict_kv_t));
+    while (dict_iter_hasnext(iter)) {
+        dict_kv_t *kv = array_push(kvs);
+        *kv = dict_iter_next(iter);
+        n++;
+    }
+
+    total = n * multiplier;
+    reply_add_multi_bulk_len(c, total);
+    for (i = 0; i < n; i++) {
+        dict_kv_t *kv = ARRAY_AT(kvs, i);
+        if (flags & DICT_KEY) reply_add_bulk_cstr(c, kv->key);
+        if (flags & DICT_VAL) reply_add_bulk_obj(c, kv->value);
+    }
+    array_free(kvs);
+    dict_iter_free(iter); 
 }
 
 void rr_cmd_rpget(rr_client_t *c) {
-    if (!dict_has_prefix(c->db->dict, c->argv[1]->ptr)) {
-        reply_add_obj(c, shared.nullbulk);
-        return;
-    }
-    dict_iterator_t *iter = dict_get_prefix(c->db->dict, c->argv[1]->ptr);
-    while (dict_iter_hasnext(iter)) {
-        dict_kv_t v = dict_iter_next(iter);
-        reply_add_bulk_obj(c, v.value);
-    }
-    dict_iter_free(iter);
+    get_prefix(c, DICT_KEY|DICT_VAL);
 }
 
 void rr_cmd_rdel(rr_client_t *c) {
-    robj *reply;
+    robj *reply, *trie, *del;
 
-    reply = rr_db_del(c->db, c->argv[1]) ? shared.ok : shared.nokeyerr;
+    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+        checkType(c, trie, OBJ_HASH)) return;
+
+    del = dict_del(trie->ptr, c->argv[2]->ptr);
+    reply = !del ? shared.czero : shared.cone;
+    rr_obj_free_callback(del);
     reply_add_obj(c, reply);
 }
