@@ -205,7 +205,7 @@ void rr_server_init(rr_configuration *cfg) {
     server.clients = listCreate();
     server.clients_with_pending_writes = listCreate();
     server.clients_to_close = listCreate();
-    
+
     server.dbs = rr_malloc(sizeof(rrdb_t*)*server.max_dbs);
     for (i = 0; i < server.max_dbs; i++) {
         server.dbs[i] = rr_db_create(i);
@@ -231,7 +231,7 @@ sds rr_server_get_info(void) {
     size_t system_mem = rr_get_system_memory_size();
     unsigned long long max_mem = server.max_memory ? server.max_memory : system_mem;
     sds info = sdsempty();
-    
+
     info = sdscatprintf(info,
         "# Server\r\n"
         "current_clients:%lu\r\n"
@@ -239,7 +239,7 @@ sds rr_server_get_info(void) {
         "clients_rejected:%lu\r\n"
         "\r\n",
         listLength(server.clients), server.served, server.rejected);
-    
+
     bytesToHuman(used_mem_human, used_mem);
     bytesToHuman(system_mem_human, system_mem);
     bytesToHuman(max_mem_human, max_mem);
@@ -473,6 +473,7 @@ static int process_inline_input(rr_client_t *c) {
     /* Create redis objects for all arguments. */
     for (c->argc = 0, i = 0; i < argc; i++) {
         if (sdslen(argv[i])) {
+            if (i == 0) sdstolower(argv[i]);
             c->argv[c->argc] = createObject(OBJ_STRING, argv[i]);
             c->argc++;
         } else {
