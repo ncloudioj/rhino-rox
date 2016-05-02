@@ -49,6 +49,17 @@ bool rr_db_del_sync(rrdb_t *db, robj *key) {
     }
 }
 
+/* High level Set operation. This function can be used in order to set
+ * a key, whatever it was existing or not, to a new object.
+ *
+ * 1) The ref count of the value object is incremented.
+ */
+bool rr_db_set_key(rrdb_t *db, robj *key, robj *val) {
+    bool ret = rr_db_add(db, key, val);
+    if (ret) incrRefCount(val);
+    return ret; 
+}
+
 /* Return the amount of work needed in order to free an object.
  * The return value is not always the actual number of allocations the
  * object is compoesd of, but a number proportional to it.

@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef ROBJ_H
-#define ROBJ_H ROBJ_H
+#ifndef _RR_ROBJ_H
+#define _RR_ROBJ_H
 
 #include "sds.h"
 
@@ -98,7 +98,6 @@ void incrRefCount(robj *o);
 robj *makeObjectShared(robj *o);
 robj *resetRefCount(robj *obj);
 void freeStringObject(robj *o);
-void freeListObject(robj *o);
 void freeHashObject(robj *o);
 robj *createObject(int type, void *ptr);
 robj *createStringObject(const char *ptr, size_t len);
@@ -116,4 +115,4 @@ robj *createHashObject(void);
 
 extern struct sharedObjectsStruct shared;
 
-#endif /* ifndef ROBJ_H */
+#endif /* ifndef _RR_ROBJ_H */

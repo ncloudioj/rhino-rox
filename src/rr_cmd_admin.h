@@ -1,5 +1,5 @@
-#ifndef RR_CMD_ADMIN
-#define RR_CMD_ADMIN
+#ifndef _RR_CMD_ADMIN_H
+#define _RR_CMD_ADMIN_H
 
 #include "rr_server.h"
 

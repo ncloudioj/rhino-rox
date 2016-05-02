@@ -10,6 +10,7 @@
 #include "rr_bgtask.h"
 #include "rr_db.h"
 #include "rr_cmd_admin.h"
+#include "rr_cmd_trie.h"
 #include "rr_datetime.h"
 #include "ini.h"
 
@@ -88,9 +89,10 @@ static void call(rr_client_t *c, int flags);
  *    are not fast commands.
  */
 struct redisCommand redisCommandTable[] = {
-    /*  {"get",getCommand,2,"rF",0,NULL,1,1,1,0,0}, */
-    /*  {"set"tCommand,-3,"wm",0,NULL,1,1,1,0,0}, */
-    /*  {"del",delCommand,-2,"w",0,NULL,1,-1,1,0,0}, */
+     {"rget",rr_cmd_rget,2,"rF",0,NULL,1,1,1,0,0},
+     {"rpget",rr_cmd_rpget,2,"rF",0,NULL,1,1,1,0,0},
+     {"rset",rr_cmd_rset,-3,"wm",0,NULL,1,1,1,0,0},
+     {"rdel",rr_cmd_rdel,-2,"w",0,NULL,1,-1,1,0,0},
     /*  {"exists",existsCommand,-2,"rF",0,NULL,1,-1,1,0,0}, */
     /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
     {"ping",rr_cmd_admin_ping,-1,"rtF",0,NULL,0,0,0,0,0},
@@ -432,7 +434,6 @@ static int process_inline_input(rr_client_t *c) {
             sdsfree(argv[i]);
         }
     }
-    reply_add_longlong(c, argc);
     rr_free(argv);
     return RR_OK;
 }
