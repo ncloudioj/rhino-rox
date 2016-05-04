@@ -34,7 +34,7 @@ static int server_cron(eventloop_t *el, void *ud);
 static void before_polling(eventloop_t *el);
 static void handle_accept(eventloop_t *el, int fd, void *ud, int mask);
 static void add_client(int fd, int flags, char *ip);
-static void client_free_async(rr_client_t *c);
+static void free_client_async(rr_client_t *c);
 static void handle_async_freed_clients(void);
 static void free_client_argv(rr_client_t *c);
 static int cmd_process(rr_client_t *c);
@@ -258,6 +258,7 @@ sds rr_server_get_info(void) {
 }
 
 struct redisCommand *cmd_lookup(sds name) {
+    sdstolower(name);
     return dict_get(server.commands, name);
 }
 
@@ -393,7 +394,7 @@ static void handle_async_freed_clients(void) {
     }
 }
 
-static void client_free_async(rr_client_t *c) {
+static void free_client_async(rr_client_t *c) {
     if (c->flags & CLIENT_CLOSE_ASAP) return;
     c->flags |= CLIENT_CLOSE_ASAP;
     listAddNodeTail(server.clients_to_close,c);
@@ -418,7 +419,7 @@ static int handle_clients_with_pending_writes() {
         if (client_has_pending_replies(c) &&
             el_event_add(server.el, c->fd, RR_EV_WRITE, reply_write_callback, c)
             == RR_EV_ERR) {
-            client_free_async(c);
+            free_client_async(c);
         }
     }
     return processed;
@@ -429,7 +430,6 @@ static void before_polling(eventloop_t *el) {
     handle_clients_with_pending_writes();
 }
 
-/* It does nothing except echoing the query now */
 static int process_inline_input(rr_client_t *c) {
     char *newline;
     int i, argc;
@@ -473,7 +473,6 @@ static int process_inline_input(rr_client_t *c) {
     /* Create redis objects for all arguments. */
     for (c->argc = 0, i = 0; i < argc; i++) {
         if (sdslen(argv[i])) {
-            if (i == 0) sdstolower(argv[i]);
             c->argv[c->argc] = createObject(OBJ_STRING, argv[i]);
             c->argc++;
         } else {
@@ -484,17 +483,182 @@ static int process_inline_input(rr_client_t *c) {
     return RR_OK;
 }
 
+
+/* Trims the query buffer to make the function that processes
+ * multi bulk requests idempotent */
+static void set_protocol_error(rr_client_t *c, int pos) {
+    c->flags |= CLIENT_CLOSE_AFTER_REPLY;
+    sdsrange(c->query, pos, -1);
+}
+
+static int process_multi_bulk_input(rr_client_t *c) {
+    char *newline = NULL;
+    int pos = 0, ok;
+    long long ll;
+
+    if (c->multibulk_len == 0) {
+        /* The client should have been reset */
+        assert(c->argc == 0);
+
+        /* Multi bulk length cannot be read without a \r\n */
+        newline = strchr(c->query, '\r');
+        if (newline == NULL) {
+            if (sdslen(c->query) > PROTO_INLINE_MAX_LEN) {
+                reply_add_err(c, "Protocol error: too big mbulk count string");
+                set_protocol_error(c, 0);
+            }
+            return RR_ERROR;
+        }
+
+        /* Buffer should also contain \n */
+        if (newline-(c->query) > ((signed)sdslen(c->query)-2))
+            return RR_ERROR;
+
+        /* We know for sure there is a whole line since newline != NULL,
+         * so go ahead and find out the multi bulk length. */
+        ok = string2ll(c->query+1, newline-(c->query+1), &ll);
+        if (!ok || ll > 1024*1024) {
+            reply_add_err(c, "Protocol error: invalid multibulk length");
+            set_protocol_error(c, pos);
+            return RR_ERROR;
+        }
+
+        pos = (newline-c->query) + 2;
+        if (ll <= 0) {
+            sdsrange(c->query,pos,-1);
+            return RR_OK;
+        }
+
+        c->multibulk_len = ll;
+
+        /* Setup argv array on client structure */
+        if (c->argv) rr_free(c->argv);
+        c->argv = rr_malloc(sizeof(robj*)*c->multibulk_len);
+    }
+
+    assert(c->multibulk_len > 0);
+    while(c->multibulk_len) {
+        /* Read bulk length if unknown */
+        if (c->bulk_len == -1) {
+            newline = strchr(c->query+pos, '\r');
+            if (newline == NULL) {
+                if (sdslen(c->query) > PROTO_INLINE_MAX_LEN) {
+                    reply_add_err(c,
+                        "Protocol error: too big bulk count string");
+                    set_protocol_error(c,0);
+                    return RR_ERROR;
+                }
+                break;
+            }
+
+            /* Buffer should also contain \n */
+            if (newline-(c->query) > ((signed)sdslen(c->query)-2))
+                break;
+
+            if (c->query[pos] != '$') {
+                reply_add_err_format(c,
+                    "Protocol error: expected '$', got '%c'", c->query[pos]);
+                set_protocol_error(c, pos);
+                return RR_ERROR;
+            }
+
+            ok = string2ll(c->query+pos+1, newline-(c->query+pos+1), &ll);
+            if (!ok || ll < 0 || ll > 512*1024*1024) {
+                reply_add_err(c, "Protocol error: invalid bulk length");
+                set_protocol_error(c,pos);
+                return RR_ERROR;
+            }
+
+            pos += newline-(c->query+pos)+2;
+            if (ll >= PROTO_MBULK_BIG_ARG) {
+                size_t qblen;
+
+                /* If we are going to read a large object from network
+                 * try to make it likely that it will start at c->query
+                 * boundary so that we can optimize object creation
+                 * avoiding a large copy of data. */
+                sdsrange(c->query, pos, -1);
+                pos = 0;
+                qblen = sdslen(c->query);
+                /* Hint the sds library about the amount of bytes this string is
+                 * going to contain. */
+                if (qblen < (size_t)ll+2)
+                    c->query = sdsMakeRoomFor(c->query, ll+2-qblen);
+            }
+            c->bulk_len = ll;
+        }
+
+        /* Read bulk argument */
+        if (sdslen(c->query)-pos < (unsigned)(c->bulk_len+2)) {
+            /* Not enough data (+2 == trailing \r\n) */
+            break;
+        } else {
+            /* Optimization: if the buffer contains JUST our bulk element
+             * instead of creating a new object by *copying* the sds we
+             * just use the current sds string. */
+            if (pos == 0 &&
+                c->bulk_len >= PROTO_MBULK_BIG_ARG &&
+                (signed) sdslen(c->query) == c->bulk_len+2)
+            {
+                c->argv[c->argc++] = createObject(OBJ_STRING,c->query);
+                sdsIncrLen(c->query,-2); /* remove CRLF */
+                c->query = sdsempty();
+                /* Assume that if we saw a fat argument we'll see another one
+                 * likely... */
+                c->query = sdsMakeRoomFor(c->query, c->bulk_len+2);
+                pos = 0;
+            } else {
+                c->argv[c->argc++] =
+                    createStringObject(c->query+pos, c->bulk_len);
+                pos += c->bulk_len+2;
+            }
+            c->bulk_len = -1;
+            c->multibulk_len--;
+        }
+    }
+
+    /* Trim to pos */
+    if (pos) sdsrange(c->query, pos, -1);
+
+    /* We're done when c->multibulk == 0 */
+    if (c->multibulk_len == 0) return RR_OK;
+
+    /* Still not read to process the command */
+    return RR_ERROR;
+}
+
 static void process_user_input(rr_client_t *c) {
-    while (sdslen(c->query)) {
-       if (process_inline_input(c) != RR_OK) break;
+    while (sdslen(c->query)) { 
+        /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
+         * written to the client. Make sure not let the reply grow after
+         * this flag has been set (i.e. don't process more commands). */
+        if (c->flags & CLIENT_CLOSE_AFTER_REPLY) break;
+
+        /* Determine request type when unknown. */
+        if (!c->req_type) {
+            if (c->query[0] == '*') {
+                c->req_type = PROTO_REQ_MULTIBULK;
+            } else {
+                c->req_type = PROTO_REQ_INLINE;
+            }
+        }
+
+        if (c->req_type == PROTO_REQ_INLINE) {
+            if (process_inline_input(c) != RR_OK) break;
+        } else if (c->req_type == PROTO_REQ_MULTIBULK) {
+            if (process_multi_bulk_input(c) != RR_OK) break;
+        } else {
+            rr_log(RR_LOG_WARNING, "Unknown request type");
+            assert(0); 
+        }
 
         /* Multibulk processing could see a <= 0 length. */
         if (c->argc == 0) {
-            client_reset(c);
+            rr_client_reset(c);
         } else {
             /* Only reset the client when the command was executed. */
             if (cmd_process(c) == RR_OK)
-                client_reset(c);
+                rr_client_reset(c);
         }
     }
 }
@@ -588,8 +752,11 @@ static void call(rr_client_t *c, int flags) {
     server.ncmd_complete++;
 }
 
-/* client_reset prepare the client to process the next command */
-void client_reset(rr_client_t *c) {
+/* prepares the client to process the next command */
+void rr_client_reset(rr_client_t *c) {
+    c->req_type = 0; 
+    c->multibulk_len = 0;
+    c->bulk_len = -1;
     free_client_argv(c);
 }
 
@@ -653,6 +820,9 @@ rr_client_t *rr_client_create(int fd) {
     }
 
     c->fd = fd;
+    c->req_type = 0;
+    c->multibulk_len = 0;
+    c->bulk_len = -1;
     c->query = sdsempty();
     c->argc = 0;
     c->argv = NULL;

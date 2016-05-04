@@ -15,6 +15,10 @@
 #define PROTO_QUERY_MAX_LEN (512*1024*1024) /* max length of the query string */
 #define PROTO_IOBUF_LEN (16*1024) /* default read buffer length */
 #define PROTO_INLINE_MAX_LEN (1024*64) /* max length of inline reads */
+#define PROTO_MBULK_BIG_ARG (1024*32)  /* threshold of a big argument in multi bulk request */
+
+#define PROTO_REQ_MULTIBULK 1          /* multibulk user request */
+#define PROTO_REQ_INLINE 2             /* inline user request */
 
 #define SERVER_CRON_MAX_FREQUENCY (1000) /* max frequency of server cron */
 #define SERVER_RESERVED_FDS 32           /* number of reserved file descriptors */
@@ -51,6 +55,9 @@ struct rr_server_t {
 struct redisCommand;
 typedef struct rr_client_t {
     int fd;                        /* client file descriptor */
+    int req_type;                  /* request type: [inline|multibulk] */
+    int multibulk_len;             /* number of multi bulk arguments left to read */
+    long bulk_len;                 /* length of bulk argument in multi bulk request */
     sds query;                     /* query buffer */
     list *reply;                   /* reply list */
     struct redisCommand *cmd;      /* current cmd */
@@ -118,7 +125,7 @@ sds rr_server_get_info(void);
 
 rr_client_t *rr_client_create(int fd);
 void rr_client_free(rr_client_t *c);
-void client_reset(rr_client_t *c);
+void rr_client_reset(rr_client_t *c);
 
 /* command look up */
 struct redisCommand *cmd_lookup(sds name);
