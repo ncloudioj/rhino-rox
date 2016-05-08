@@ -6,9 +6,9 @@
 
 static const struct {
     char * key;
-    int  value;
+    unsigned long  value;
 } pairs[] = {
-    {"app", 0},
+    {"app", 10},
     {"apple", 1},
     {"appleby", 2},
     {"apply", 3},
@@ -21,11 +21,11 @@ static const struct {
 };
 
 static const struct {
-    char * key;
-    int  value;
+    char *key;
+    unsigned long  value;
 } in_order_pairs[] = {
     {"ape", 4},
-    {"app", 0},
+    {"app", 10},
     {"apple", 1},
     {"appleby", 2},
     {"apply", 3},
@@ -41,21 +41,21 @@ MU_TEST(test_dict_basic) {
     d = dict_create();
     mu_check(dict_empty(d));
     mu_assert_int_eq(0, dict_length(d));
-    
+
     int i;
     for (i=0; pairs[i].key; i++)
-        dict_set(d, pairs[i].key, (void *) &pairs[i].value);
+        dict_set(d, pairs[i].key, (void *) pairs[i].value);
     mu_assert_int_eq(i, dict_length(d));
 
     for (i=0; pairs[i].key; i++) {
-        int v = *(int *) dict_get(d, pairs[i].key);
+        unsigned long v = (unsigned long) dict_get(d, pairs[i].key);
         mu_assert_int_eq(pairs[i].value, v);
     }
 
     mu_check(dict_contains(d, "box"));
     mu_check(dict_has_prefix(d, "ap"));
     mu_check(!dict_contains(d, "nope"));
-    
+
     int new = 10;
     /* Overwrite the existing key */
     mu_check(dict_set(d, "box", &new));
@@ -75,17 +75,24 @@ MU_TEST(test_dict_basic) {
 MU_TEST(test_dict_iterator) {
     dict_t *d;
     d = dict_create();
- 
+
+    dict_iterator_t *it = dict_iter_create(d);
+    while(dict_iter_hasnext(it)) {
+        dict_kv_t kv = dict_iter_next(it);
+        printf("%s %ld\n", kv.key, (unsigned long) kv.value);
+    }
+    dict_iter_free(it);
+
     int i;
     for (i=0; pairs[i].key; i++)
-        dict_set(d, pairs[i].key, (void *) &pairs[i].value);
+        dict_set(d, pairs[i].key, (void *) pairs[i].value);
 
     dict_kv_t kv;
     dict_iterator_t *iter = dict_iter_create(d);
     for(i=0; dict_iter_hasnext(iter); i++) {
         kv = dict_iter_next(iter);
         mu_check(!strcmp(kv.key, in_order_pairs[i].key));
-        mu_assert_int_eq(*(int *) kv.value, in_order_pairs[i].value);
+        mu_assert_int_eq((unsigned long) kv.value, in_order_pairs[i].value);
     }
     dict_iter_free(iter);
 
@@ -96,7 +103,7 @@ MU_TEST(test_dict_iterator) {
         kv = dict_iter_next(iter);
         mu_check(!strcmp(kv.key, expected[i]));
     }
-    mu_assert_int_eq(3, i); 
+    mu_assert_int_eq(3, i);
     dict_iter_free(iter);
 
     dict_free(d);
@@ -106,7 +113,7 @@ MU_TEST(test_dict_copy) {
     dict_t *d, *s;
     s = dict_create();
     d = dict_create();
- 
+
     int i;
     for (i=0; pairs[i].key; i++)
         dict_set(s, pairs[i].key, (void *) &pairs[i].value);

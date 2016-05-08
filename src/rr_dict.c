@@ -335,17 +335,13 @@ bool dict_copy(dict_t *dest, dict_t *src) {
     return rv;
 }
 
-static dict_iterator_t *iter_create(Dict *dict) {
+static dict_iterator_t *iter_create(Dict *dict, unsigned long size) {
     Dict *node;
 
     dict_iterator_t *iter = rr_malloc(sizeof(*iter));
     if (!iter) return NULL;
     iter->stack = listCreate();
-    if (EMPTY_NODE(dict)) {
-        /* It's either a single node or an empty dict */
-        if (dict->v) listAddNodeHead(iter->stack, dict);
-        return iter;
-    }
+    if (size == 0) return iter;
 
     node = dict;
     listAddNodeHead(iter->stack, node);
@@ -360,11 +356,11 @@ dict_iterator_t *dict_get_prefix(dict_t *dict, const char *prefix) {
     Dict *d;
 
     d = get_prefix(dict->dict, prefix);
-    return iter_create(d);
+    return iter_create(d, dict->size);
 }
 
 dict_iterator_t *dict_iter_create(dict_t *dict) {
-    return iter_create(dict->dict);
+    return iter_create(dict->dict, dict->size);
 }
 
 bool dict_iter_hasnext(dict_iterator_t *iter) {
@@ -376,19 +372,19 @@ dict_kv_t dict_iter_next(dict_iterator_t *iter) {
     listNode *ln;
     Dict *dict, *node;
 
-    ln = listIndex(iter->stack, 0);
-    dict = (Dict *) ln->value;
+    ln = listFirst(iter->stack);
+    dict = (Dict*) ln->value;
     /* The toppest item in the stack must be a leaf node */
     assert(dict->v);
-    listDelNode(iter->stack, ln);
     kv.key = dict->u.s;
     kv.value = dict->v;
+    listDelNode(iter->stack, ln);
 
     if (!listLength(iter->stack)) return kv;
 
     /* Move iterator to the next leaf node */
-    ln = listIndex(iter->stack, 0);
-    dict = (Dict *) ln->value;
+    ln = listFirst(iter->stack);
+    dict = (Dict*) ln->value;
     listDelNode(iter->stack, ln);
     /* This node must be an internal node */
     assert(!dict->v);

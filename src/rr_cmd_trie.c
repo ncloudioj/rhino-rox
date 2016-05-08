@@ -21,7 +21,7 @@ static robj *rset_lookup_or_create(rr_client_t *c, robj *key) {
         rr_db_add(c->db, key, obj);
     } else {
         if (obj->type != OBJ_HASH) {
-            reply_add_obj(c, shared.wrongtypeerr); 
+            reply_add_obj(c, shared.wrongtypeerr);
             return NULL;
         }
     }
@@ -68,10 +68,11 @@ void rr_cmd_rset(rr_client_t *c) {
 
     trie = rset_lookup_or_create(c, c->argv[1]);
     if (!trie) return;
-    
+
     c->argv[3] = tryObjectEncoding(c->argv[3]);
     reply = dict_set(trie->ptr, c->argv[2]->ptr, c->argv[3]) ? \
             shared.ok : shared.err;
+    incrRefCount(c->argv[3]);
     reply_add_obj(c, reply);
 }
 
@@ -86,7 +87,7 @@ static void get_prefix(rr_client_t *c, int flags) {
 
     if (flags & DICT_KEY) multiplier++;
     if (flags & DICT_VAL) multiplier++;
-    
+
     iter = dict_get_prefix(trie->ptr, c->argv[2]->ptr);
     kvs = array_create(8, sizeof(dict_kv_t));
     while (dict_iter_hasnext(iter)) {
@@ -103,11 +104,54 @@ static void get_prefix(rr_client_t *c, int flags) {
         if (flags & DICT_VAL) reply_add_bulk_obj(c, kv->value);
     }
     array_free(kvs);
-    dict_iter_free(iter); 
+    dict_iter_free(iter);
 }
 
 void rr_cmd_rpget(rr_client_t *c) {
     get_prefix(c, DICT_KEY|DICT_VAL);
+}
+
+static void get_all(rr_client_t *c, int flags) {
+    robj *trie;
+    dict_iterator_t *iter;
+    array_t *kvs;
+    long n = 0, multiplier = 0, i, total;
+
+    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+        checkType(c, trie, OBJ_HASH)) return;
+
+    if (flags & DICT_KEY) multiplier++;
+    if (flags & DICT_VAL) multiplier++;
+
+    iter = dict_iter_create(trie->ptr);
+    kvs = array_create(8, sizeof(dict_kv_t));
+    while (dict_iter_hasnext(iter)) {
+        dict_kv_t *kv = array_push(kvs);
+        *kv = dict_iter_next(iter);
+        n++;
+    }
+
+    total = n * multiplier;
+    reply_add_multi_bulk_len(c, total);
+    for (i = 0; i < n; i++) {
+        dict_kv_t *kv = array_at(kvs, i);
+        if (flags & DICT_KEY) reply_add_bulk_cstr(c, kv->key);
+        if (flags & DICT_VAL) reply_add_bulk_obj(c, kv->value);
+    }
+    array_free(kvs);
+    dict_iter_free(iter);
+}
+
+void rr_cmd_rkeys(rr_client_t *c) {
+    get_all(c, DICT_KEY);
+}
+
+void rr_cmd_rvalues(rr_client_t *c) {
+    get_all(c, DICT_VAL);
+}
+
+void rr_cmd_rgetall(rr_client_t *c) {
+    get_all(c, DICT_KEY|DICT_VAL);
 }
 
 void rr_cmd_rdel(rr_client_t *c) {

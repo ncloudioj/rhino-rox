@@ -5,8 +5,8 @@ Yes, you should use Redis whenever is possible. However, occasionally there are 
 
 Instead of forking off Redis, Rhino-Rox reuses a number of modules from Redis, for instance, event handling, sds, [Redis protocal][1] etc. It was *not* designed to provide those advanced features like Redis, i.e. clustering, sentinel, PubSub and so forth. By design, it should just serve as a single-node data structure server.
 
-# Target data structures
-Honestly, don't know yet. Perhaps something like interval tree, trie, compressed bitmap I guess. Just managed to get it up and running as an echo server. :)
+# Current supported data structures
+* Trie
 
 # Build and configure
 Clone the repo, then `make`, that's it for now! Rhino-Rox also depends on [jemalloc][2], it'll download and install it automatically.

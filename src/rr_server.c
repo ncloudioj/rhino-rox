@@ -93,7 +93,6 @@ static void call(rr_client_t *c, int flags);
  */
 struct redisCommand redisCommandTable[] = {
     {"get",rr_cmd_get,2,"rF",0,NULL,1,1,1,0,0},
-    /* {"rpget",rr_cmd_pget,2,"rF",0,NULL,1,1,1,0,0}, */
     {"len",rr_cmd_len,1,"rF",0,NULL,1,1,1,0,0},
     {"set",rr_cmd_set,3,"wm",0,NULL,1,1,1,0,0},
     {"del",rr_cmd_del,2,"wF",0,NULL,1,-1,1,0,0},
@@ -103,7 +102,10 @@ struct redisCommand redisCommandTable[] = {
     {"rlen",rr_cmd_rlen,2,"rF",0,NULL,1,1,1,0,0},
     {"rset",rr_cmd_rset,4,"wm",0,NULL,1,1,1,0,0},
     {"rdel",rr_cmd_rdel,3,"wF",0,NULL,1,-1,1,0,0},
-    {"rexists",rr_cmd_rexists,3,"rF",0,NULL,1,-1,1,0,0},
+    {"rkeys",rr_cmd_rkeys,2,"rF",0,NULL,1,1,1,0,0},
+    {"rvalues",rr_cmd_rvalues,2,"rF",0,NULL,1,1,1,0,0},
+    {"rgetall",rr_cmd_rgetall,2,"rF",0,NULL,1,1,1,0,0},
+    {"rexists",rr_cmd_rexists,4,"rF",0,NULL,1,-1,1,0,0},
     /*  {"rgetall",rr_cmd_rgetall,1,"r",0,NULL,0,0,0,0,0}, */
     /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
     {"type",rr_cmd_type,2,"rF",0,NULL,1,1,1,0,0},
