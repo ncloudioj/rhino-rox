@@ -105,7 +105,7 @@ struct redisCommand redisCommandTable[] = {
     {"rkeys",rr_cmd_rkeys,2,"rF",0,NULL,1,1,1,0,0},
     {"rvalues",rr_cmd_rvalues,2,"rF",0,NULL,1,1,1,0,0},
     {"rgetall",rr_cmd_rgetall,2,"rF",0,NULL,1,1,1,0,0},
-    {"rexists",rr_cmd_rexists,4,"rF",0,NULL,1,-1,1,0,0},
+    {"rexists",rr_cmd_rexists,3,"rF",0,NULL,1,-1,1,0,0},
     /*  {"rgetall",rr_cmd_rgetall,1,"r",0,NULL,0,0,0,0,0}, */
     /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
     {"type",rr_cmd_type,2,"rF",0,NULL,1,1,1,0,0},

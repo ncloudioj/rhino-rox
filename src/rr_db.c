@@ -107,7 +107,7 @@ void rr_cmd_get(struct rr_client_t *c) {
     robj *o;
 
     if ((o=rr_db_lookup(c->db, c->argv[1])) == NULL) {
-        reply_add_bulk_obj(c, shared.nullbulk);
+        reply_add_obj(c, shared.nullbulk);
         return;
     }
 
