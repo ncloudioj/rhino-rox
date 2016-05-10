@@ -8,8 +8,8 @@ install:
 	cd src && make $@
 
 test:
-	cd src && make
-	cd tests && make $@
+	@cd src && make
+	@cd tests && ./run-tests.sh
 
 .PHONY: clean test
 
