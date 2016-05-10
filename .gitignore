@@ -30,6 +30,7 @@
 
 # Debug files
 *.dSYM/# Byte-compiled / optimized / DLL files
+*.dSYM/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -87,3 +88,6 @@ tags
 
 #bin
 rhino-rox
+
+#valgrind
+valgrind.log

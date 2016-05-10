@@ -11,7 +11,10 @@ test:
 	@cd src && make
 	@cd tests && ./run-tests.sh
 
-.PHONY: clean test
+test-ci:
+	@cd tests && ./run-tests-ci.sh
+
+.PHONY: clean test test-ci
 
 clean:
 	cd src && make $@
