@@ -21,6 +21,7 @@ typedef struct rr_configuration {
     int cron_frequency;
     int log_level;
     char *log_file;
+    char *pidfile;
     int tcp_backlog;
     int lazyfree_server_del;
     int max_dbs;

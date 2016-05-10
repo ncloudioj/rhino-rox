@@ -22,6 +22,7 @@
 
 #define SERVER_CRON_MAX_FREQUENCY (1000) /* max frequency of server cron */
 #define SERVER_RESERVED_FDS 32           /* number of reserved file descriptors */
+#define SERVER_DEFAULT_PIDFILE "/var/run/rhino-rox.pid" /* default pidfile path */
 
 #define CLIENT_PENDING_WRITE (1<<1) /* client has output to send but a write
                                        handler is yet not installed. */
@@ -32,10 +33,11 @@
 
 struct rr_server_t {
     char err[RR_NET_ERR_MAXLEN];       /* buffer for the error message */
+    char *pidfile;                     /* pidfile path */
     eventloop_t *el;                   /* event loop */
     unsigned int max_clients;          /* max client size */
-    unsigned long rejected;             /* counter for rejected clients */
-    unsigned long served;               /* counter for served clients */
+    unsigned long rejected;            /* counter for rejected clients */
+    unsigned long served;              /* counter for served clients */
     unsigned long long max_memory;     /* max number of memory bytes to use */
     int hz;                            /* frequency of server cron */
     int lpfd;                          /* file descriptor for the listen socket */

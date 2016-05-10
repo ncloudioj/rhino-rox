@@ -39,6 +39,7 @@ static void handle_async_freed_clients(void);
 static void free_client_argv(rr_client_t *c);
 static int cmd_process(rr_client_t *c);
 static void call(rr_client_t *c, int flags);
+static void create_pidfile(void);
 
 /*
  * Every entry is composed of the following fields:
@@ -172,6 +173,17 @@ void populateCommandTable(void) {
     }
 }
 
+static void create_pidfile(void) {
+    if (!server.pidfile) server.pidfile = rr_strdup(SERVER_DEFAULT_PIDFILE);
+
+    /* Try to write the pid file in a best-effort way. */
+    FILE *fp = fopen(server.pidfile, "w");
+    if (fp) {
+        fprintf(fp, "%d\n", (int)getpid());
+        fclose(fp);
+    }
+}
+
 void rr_server_init(rr_configuration *cfg) {
     int i;
 
@@ -179,6 +191,7 @@ void rr_server_init(rr_configuration *cfg) {
     rr_log_set_log_file(cfg->log_file);
 
     server.shutdown = 0;
+    server.pidfile = NULL;
     server.max_memory = cfg->max_memory;
     server.max_clients = cfg->max_clients;
     server.max_dbs = cfg->max_dbs;
@@ -221,6 +234,11 @@ void rr_server_init(rr_configuration *cfg) {
 
     /* light up background task runners */
     rr_bgt_init();
+    /* create pidfile if necessary */
+    if (cfg->pidfile[0] != '\0') {
+        server.pidfile = rr_strdup(cfg->pidfile);
+        create_pidfile();
+    }
     return;
 error:
     rr_log(RR_LOG_CRITICAL, server.err);
@@ -284,6 +302,13 @@ static void rr_server_close_listening_sockets() {
 
 int rr_server_prepare_to_shutdown(void) {
     rr_log(RR_LOG_INFO, "User required to shutdown the service, preparing...");
+
+    /* nuke the pidfile */
+    if (server.pidfile) {
+        rr_log(RR_LOG_INFO, "Deleting the pidfile %s", server.pidfile);
+        unlink(server.pidfile);
+    }
+
     rr_server_close_listening_sockets();
     rr_log(RR_LOG_INFO, "Ready to exit, bye!");
     return RR_OK;

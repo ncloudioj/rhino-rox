@@ -4,6 +4,7 @@
 #include "rr_config.h"
 #include "rr_logging.h"
 #include "rr_server.h"
+#include "rr_malloc.h"
 #include "ini.h"
 
 #include <stdlib.h>
@@ -124,6 +125,20 @@ static int handler(void *config,
             err = "Invalid value for max_memory";
             goto error;
         }
+    } else if (MATCH("server", "pidfile")) {
+        cfg->pidfile = rr_strdup(value);
+        if (cfg->pidfile[0] != '\0') {
+            FILE *fp;
+
+            fp = fopen(cfg->pidfile, "a");
+            if (fp == NULL) {
+                snprintf(msg, sizeof(msg), "Failed to open  pidfile \"%s\": %s",
+                    cfg->pidfile, strerror(errno));
+                err = msg;
+                goto error;
+            }
+            fclose(fp);
+        }
     } else if (MATCH("logging", "log_level")) {
         if (!cfg_enum_get_value(LOG_LEVEL_ENUM, value, &cfg->log_level)
             || cfg->log_level > RR_LOG_CRITICAL
@@ -132,7 +147,7 @@ static int handler(void *config,
             goto error;
         }
     } else if (MATCH("logging", "log_file")) {
-        cfg->log_file = strdup(value);
+        cfg->log_file = rr_strdup(value);
         if (cfg->log_file[0] != '\0') {
             FILE *fp;
 
@@ -152,7 +167,7 @@ static int handler(void *config,
             goto error;
         }
     } else if (MATCH("network", "bind")) {
-        cfg->bind = strdup(value);
+        cfg->bind = rr_strdup(value);
     } else if (MATCH("network", "tcp_backlog")) {
         cfg->tcp_backlog = atoi(value);
         if (cfg->port < 0) {
