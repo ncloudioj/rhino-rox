@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 rr=rhino-rox
 pidfile=$(cd ../src && sed -n 's/^pidfile = \(.*\)$/\1/p' rhino-rox.ini)
