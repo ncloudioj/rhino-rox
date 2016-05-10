@@ -1,5 +1,7 @@
 # Rhino-Rox
 
+[![Build Status](https://travis-ci.org/ncloudioj/rhino-rox.svg?branch=master)](https://travis-ci.org/ncloudioj/rhino-rox)
+
 Inspired by Redis, Rhino-Rox aims at providing an easy way to serve your in-memory data structure via network.
 
 # Why Rhino-Rox
