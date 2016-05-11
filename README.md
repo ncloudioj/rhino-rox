@@ -5,20 +5,48 @@
 Inspired by Redis, Rhino-Rox aims at providing an easy way to serve your in-memory data structure via network.
 
 # Why Rhino-Rox
-Yes, you should use Redis whenever is possible. However, occasionally there are some infrequently used data structures that you do want to wrap them up and access from different processes or machines. Imaging you've been asked, "Hey, this data structure is great, can I access it from anywhere like Redis?". Rhino-Rox is an attempt to solve that kind of problem.
+Yes, you should use Redis whenever possible. However, occasionally there are some infrequently used data structures that you do want to wrap them up and access from different processes or machines. Imaging you've been asked, "Hey, this data structure is great, can I access it from anywhere like Redis?". Rhino-Rox is an attempt to solve that kind of problem. Recently, the redis author started an initiative that intends to add a [loadable module system][6] to Redis. It would be very exciting to see that feature lands to Redis.
 
-Instead of forking off Redis, Rhino-Rox reuses a number of modules from Redis, for instance, event handling, sds, [Redis protocal][1] etc. It was *not* designed to provide those advanced features like Redis, i.e. clustering, sentinel, PubSub and so forth. By design, it should just serve as a single-node data structure server.
-
-# Current supported data structures
-* Trie
+Rhino-Rox reuses a number of modules from Redis,for instance, event handling, sds, [Redis protocal][1] etc. It was *not* designed to provide those advanced features like Redis, i.e. clustering, sentinel, PubSub and so forth. By design, it should just serve as a single-node data structure server. That being said, you can use most of existing Redis clients to communicate with Rhino-Rox server without any extra adaption.
 
 # Build and configure
 Clone the repo, then `make`, that's it for now! Rhino-Rox also depends on [jemalloc][2], it'll download and install it automatically.
 
 There are also a few options in the configuration file `rhino-rox.ini`.
 
+# Usage
+## Start the server
+`$ ./rhino-rox`
+
+## Connect to the server
+`$ nc localhost 6000`
+
+## Admin
+* `info`
+* `type key`
+* `ping`
+* `echo`
+
+## String
+* `set key value`
+* `get key value`
+* `del key`
+* `exists key`
+
+## Trie
+* `rset user key value`
+* `rget user key`
+* `rpget user prefix`
+* `rkeys user`
+* `rvalues user`
+* `rgetall user`
+* `rexists user`
+
+## Heap
+Coming soon
+
 # What Rhino-Rox really is
-Rhino-Rox ([Rhinopithecus Roxellana][3]), also known as golden snub-nosed monkey, is an Old World monkey in the Colobinae subfamily. Like giant panda, this cute species is also an endangered one, only 8000-15000 are inhabiting mostly in Sichuan, China. (Yes, Sichuan is also the hometown of panda bears).
+Rhino-Rox ([Rhinopithecus Roxellana][3]), also known as golden snub-nosed monkey, is an old World monkey in the Colobinae subfamily. Like giant panda, this cute species is also an endangered one, only 8000-15000 are inhabiting mostly in Sichuan, China. (Yes, Sichuan is also the hometown of panda bears).
 
 # Tip of the hat
 * [Redis][4]
@@ -47,3 +75,4 @@ The codebase is organized much like Redis, just simplied a bit due to its design
 [3]: https://en.wikipedia.org/wiki/Golden_snub-nosed_monkey
 [4]: http://redis.io/
 [5]: https://github.com/benhoyt/inih
+[6]: http://www.antirez.com/news/106
