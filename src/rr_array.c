@@ -2,9 +2,9 @@
 #include "rr_malloc.h"
 
 array_t *
-array_create(uint32_t n, size_t s) {
+array_create(unsigned long n, size_t s) {
     array_t *a;
-    uint32_t initial_number; /* initial number of elements in array, 1 by default */
+    unsigned long initial_number; /* initial number of elements in array, 1 by default */
 
     a = rr_malloc(sizeof(array_t));
     if (a == NULL) {
@@ -55,7 +55,7 @@ array_push(array_t *array) {
 }
 
 void *
-array_push_n(array_t *array, uint32_t n) {
+array_push_n(array_t *array, unsigned long n) {
     void *ret, *elm;
 
     if (n == 0) return NULL;
@@ -82,13 +82,13 @@ array_push_n(array_t *array, uint32_t n) {
     return ret;
 }
 
-uint32_t
+unsigned long
 array_len(array_t *array) {
     return array->nelm;
 }
 
 void *
-array_at(array_t *array, int i) {
+array_at(array_t *array, long i) {
     if (i >= (int)ARRAY_LEN(array) || (i < 0 && -i > (int)ARRAY_LEN(array))) return NULL;
     return i >= 0 ? ARRAY_AT(array, i): ARRAY_AT(array, ARRAY_LEN(array)+i);
 }

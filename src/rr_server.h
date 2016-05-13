@@ -55,6 +55,7 @@ struct rr_server_t {
 };
 
 struct redisCommand;
+
 typedef struct rr_client_t {
     int fd;                        /* client file descriptor */
     int req_type;                  /* request type: [inline|multibulk] */
@@ -160,12 +161,6 @@ bool client_has_pending_replies(rr_client_t *c);
 
 
 void objectCommand(rr_client_t *c);
-
-int getDoubleFromObject(robj *o, double *target);
-int getDoubleFromObjectOrReply(rr_client_t *c, robj *o, double *target, const char *msg);
-int getLongLongFromObject(robj *o, long long *target);
-int getLongDoubleFromObject(robj *o, long double *target);
-int getLongDoubleFromObjectOrReply(rr_client_t *c, robj *o, long double *target, const char *msg);
 
 /* declare the global server variable */
 extern struct rr_server_t server;

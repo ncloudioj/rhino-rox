@@ -42,8 +42,14 @@ There are also a few options in the configuration file `rhino-rox.ini`.
 * `rgetall user`
 * `rexists user`
 
-## Heap
-Coming soon
+## Heapq
+* `qpush task 1.0 val1`
+* `qpush task 2.0 val2`
+* `qpush task 0.5 val3`
+* `qpeek task`
+* `qpop task`
+* `qlen task`
+* `qpopn task 100`
 
 # What Rhino-Rox really is
 Rhino-Rox ([Rhinopithecus Roxellana][3]), also known as golden snub-nosed monkey, is an old World monkey in the Colobinae subfamily. Like giant panda, this cute species is also an endangered one, only 8000-15000 are inhabiting mostly in Sichuan, China. (Yes, Sichuan is also the hometown of panda bears).

@@ -33,6 +33,7 @@
 #include "util.h"
 #include "rr_logging.h"
 #include "rr_dict.h"
+#include "rr_minheap.h"
 #include "rr_rhino_rox.h"
 #include "rr_server.h"
 
@@ -186,6 +187,53 @@ robj *createHashObject(void) {
     return o;
 }
 
+/* minheap callbacks - copy, compare, swap */
+static inline void *hq_cpy(void *dst, const void *src) {
+    *(hq_item_t *) dst = *(hq_item_t *) src;
+    return dst;
+}
+
+static inline int hq_cmp(const void *lv, const void *rv) {
+    const hq_item_t *l = (const hq_item_t *) lv;
+    const hq_item_t *r = (const hq_item_t *) rv;
+
+    if (l->score < r->score)
+        return -1;
+    else if (l->score > r->score)
+        return 1;
+    else
+        return 0;
+}
+
+static inline void hq_swp(void *lv, void *rv) {
+    hq_item_t tmp;
+
+    tmp = *(hq_item_t *) lv;
+    *(hq_item_t *) lv = *(hq_item_t *) rv;
+    *(hq_item_t *) rv = tmp;
+}
+
+robj *createHeapqObject(void) {
+    minheap_t *hq = minheap_create(8, sizeof(hq_item_t), hq_cmp, hq_cpy, hq_swp);
+    minheap_set_freecb(hq, rr_obj_free_callback);
+    robj *o = createObject(OBJ_HEAPQ, hq);
+    o->encoding = OBJ_ENCODING_HEAPQ;
+    return o;
+}
+
+robj *createCollectionObject(int type) {
+    switch(type) {
+    case OBJ_HASH:
+        return createHashObject();
+    case OBJ_HEAPQ:
+        return createHeapqObject();
+    default:
+        rr_log(RR_LOG_ERROR, "Wrong type");
+        return NULL;
+        break;
+    }
+}
+
 void freeStringObject(robj *o) {
     if (o->encoding == OBJ_ENCODING_RAW) {
         sdsfree(o->ptr);
@@ -203,6 +251,10 @@ void freeHashObject(robj *o) {
     }
 }
 
+void freeHeapqObject(robj *o) {
+    minheap_free((minheap_t *) o->ptr);
+}
+
 void incrRefCount(robj *o) {
     if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount++;
 }
@@ -212,6 +264,7 @@ void decrRefCount(robj *o) {
         switch(o->type) {
         case OBJ_STRING: freeStringObject(o); break;
         case OBJ_HASH: freeHashObject(o); break;
+        case OBJ_HEAPQ: freeHeapqObject(o); break;
         default: rr_log(RR_LOG_ERROR, "Unknown object type"); break;
         }
         rr_free(o);
@@ -257,6 +310,143 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     } else {
         return isSdsRepresentableAsLongLong(o->ptr,llval);
     }
+}
+
+int getLongLongFromObject(robj *o, long long *target) {
+    long long value;
+    char *eptr;
+
+    if (o == NULL) {
+        value = 0;
+    } else {
+        assert(o->type == OBJ_STRING);
+        if (sdsEncodedObject(o)) {
+            errno = 0;
+            value = strtoll(o->ptr, &eptr, 10);
+            if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
+                errno == ERANGE)
+                return RR_ERROR;
+        } else if (o->encoding == OBJ_ENCODING_INT) {
+            value = (long)o->ptr;
+        } else {
+            rr_log(RR_LOG_ERROR, "Unknown string encoding");
+            return RR_ERROR;
+        }
+    }
+    if (target) *target = value;
+    return RR_OK;
+}
+
+int getDoubleFromObject(robj *o, double *target) {
+    double value;
+    char *eptr;
+
+    if (o == NULL) {
+        value = 0;
+    } else {
+        assert(o->type == OBJ_STRING);
+        if (sdsEncodedObject(o)) {
+            errno = 0;
+            value = strtod(o->ptr, &eptr);
+            if (isspace(((char*)o->ptr)[0]) ||
+                eptr[0] != '\0' ||
+                (errno == ERANGE &&
+                    (value == HUGE_VAL || value == -HUGE_VAL || value == 0)) ||
+                errno == EINVAL ||
+                isnan(value))
+                return RR_ERROR;
+        } else if (o->encoding == OBJ_ENCODING_INT) {
+            value = (long) o->ptr;
+        } else {
+            rr_log(RR_LOG_ERROR, "Unknown string encoding");
+            return RR_ERROR;
+        }
+    }
+    if (target) *target = value;
+    return RR_OK;
+}
+
+int getLongDoubleFromObject(robj *o, long double *target) {
+    long double value;
+    char *eptr;
+
+    if (o == NULL) {
+        value = 0;
+    } else {
+        assert(o->type == OBJ_STRING);
+        if (sdsEncodedObject(o)) {
+            errno = 0;
+            value = strtold(o->ptr, &eptr);
+            if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
+                errno == ERANGE || isnan(value))
+                return RR_ERROR;
+        } else if (o->encoding == OBJ_ENCODING_INT) {
+            value = (long)o->ptr;
+        } else {
+            rr_log(RR_LOG_ERROR,"Unknown string encoding");
+            return RR_ERROR;
+        }
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getDoubleFromObjectOrReply(rr_client_t *c, robj *o, double *target, const char *msg) {
+    double value;
+    if (getDoubleFromObject(o, &value) != RR_OK) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*) msg);
+        } else {
+            reply_add_err(c,"value is not a valid float");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getLongDoubleFromObjectOrReply(rr_client_t *c, robj *o, long double *target, const char *msg) {
+    long double value;
+    if (getLongDoubleFromObject(o, &value) != RR_OK) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*)msg);
+        } else {
+            reply_add_err(c,"value is not a valid float");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getLongLongFromObjectOrReply(rr_client_t *c, robj *o, long long *target, const char *msg) {
+    long long value;
+    if (getLongLongFromObject(o, &value) != RR_OK) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*)msg);
+        } else {
+            reply_add_err(c,"value is not an integer or out of range");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
+}
+
+int getLongFromObjectOrReply(rr_client_t *c, robj *o, long *target, const char *msg) {
+    long long value;
+
+    if (getLongLongFromObjectOrReply(c, o, &value, msg) != RR_OK) return RR_ERROR;
+    if (value < LONG_MIN || value > LONG_MAX) {
+        if (msg != NULL) {
+            reply_add_err(c,(char*)msg);
+        } else {
+            reply_add_err(c,"value is out of range");
+        }
+        return RR_ERROR;
+    }
+    *target = value;
+    return RR_OK;
 }
 
 /* Try to encode a string object in order to save space */
@@ -440,6 +630,7 @@ char *strEncoding(int encoding) {
     case OBJ_ENCODING_INT: return "int";
     case OBJ_ENCODING_HT: return "hashtable";
     case OBJ_ENCODING_EMBSTR: return "embstr";
+    case OBJ_ENCODING_HEAPQ: return "heapq";
     default: return "unknown";
     }
 }

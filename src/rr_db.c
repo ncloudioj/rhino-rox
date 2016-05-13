@@ -23,6 +23,25 @@ robj *rr_db_lookup(rrdb_t *db, robj *key) {
     return dict_get(db->dict, key->ptr);
 }
 
+robj *rr_db_lookup_or_reply(rr_client_t *c, robj *key, robj *reply) {
+   robj *o;
+
+    if ((o=rr_db_lookup(c->db, key)) == NULL)
+        reply_add_bulk_obj(c, reply);
+    return o;
+}
+
+robj *rr_db_lookup_or_create(rr_client_t *c, robj *key, int obj_type) {
+    robj *obj;
+
+    obj = rr_db_lookup(c->db, c->argv[1]);
+    if (!obj) {
+        obj = createCollectionObject(obj_type);
+        rr_db_add(c->db, key, obj);
+    }
+    return obj;
+}
+
 /* Add a key/value pair to the database. Unlike rr_db_set_key,
  * it won't increment the ref count of the value.*/
 bool rr_db_add(rrdb_t *db, robj *key, robj *val) {
@@ -56,7 +75,7 @@ bool rr_db_del_sync(rrdb_t *db, robj *key) {
 bool rr_db_set_key(rrdb_t *db, robj *key, robj *val) {
     bool ret = rr_db_add(db, key, val);
     if (ret) incrRefCount(val);
-    return ret; 
+    return ret;
 }
 
 /* Return the amount of work needed in order to free an object.
@@ -114,7 +133,7 @@ void rr_cmd_get(struct rr_client_t *c) {
     if (o->type != OBJ_STRING)
         reply_add_obj(c, shared.wrongtypeerr);
     else
-        reply_add_bulk_obj(c, o); 
+        reply_add_bulk_obj(c, o);
 }
 
 void rr_cmd_set(struct rr_client_t *c) {
@@ -160,8 +179,9 @@ void rr_cmd_type(struct rr_client_t *c) {
         switch(o->type) {
         case OBJ_STRING: type = "string"; break;
         case OBJ_HASH: type = "trie"; break;
+        case OBJ_HEAPQ: type = "heapq"; break;
         default: type = "unknown"; break;
         }
     }
-    reply_add_status(c,type);
+    reply_add_status(c, type);
 }

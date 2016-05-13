@@ -4,38 +4,14 @@
 #include "rr_dict.h"
 #include "rr_array.h"
 
-static robj *db_lookup_or_reply(rr_client_t *c, robj *key, robj *reply) {
-   robj *o;
-
-    if ((o=rr_db_lookup(c->db, key)) == NULL)
-        reply_add_bulk_obj(c, reply);
-    return o;
-}
-
-static robj *rset_lookup_or_create(rr_client_t *c, robj *key) {
-    robj *obj;
-
-    obj = rr_db_lookup(c->db, c->argv[1]);
-    if (!obj) {
-        obj = createHashObject();
-        rr_db_add(c->db, key, obj);
-    } else {
-        if (obj->type != OBJ_HASH) {
-            reply_add_obj(c, shared.wrongtypeerr);
-            return NULL;
-        }
-    }
-    return obj;
-}
-
 void rr_cmd_rget(rr_client_t *c) {
     robj *trie, *o;
 
-    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+    if ((trie=rr_db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
         checkType(c, trie, OBJ_HASH)) return;
 
     if ((o = dict_get(trie->ptr, c->argv[2]->ptr)) == NULL)
-        reply_add_bulk_obj(c, shared.nullbulk);
+        reply_add_obj(c, shared.nullbulk);
     else
         reply_add_bulk_obj(c, o);
 }
@@ -43,7 +19,7 @@ void rr_cmd_rget(rr_client_t *c) {
 void rr_cmd_rexists(rr_client_t *c) {
     robj *trie;
 
-    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+    if ((trie=rr_db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
         checkType(c, trie, OBJ_HASH)) return;
 
     if (dict_contains(trie->ptr, c->argv[2]->ptr))
@@ -56,7 +32,7 @@ void rr_cmd_rlen(rr_client_t *c) {
     robj *trie;
     unsigned long len;
 
-    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+    if ((trie=rr_db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
         checkType(c, trie, OBJ_HASH)) return;
 
     len = dict_length(trie->ptr);
@@ -66,13 +42,16 @@ void rr_cmd_rlen(rr_client_t *c) {
 void rr_cmd_rset(rr_client_t *c) {
     robj *trie, *reply;
 
-    trie = rset_lookup_or_create(c, c->argv[1]);
-    if (!trie) return;
+    trie = rr_db_lookup_or_create(c, c->argv[1], OBJ_HASH);
+    if (!trie || checkType(c, trie, OBJ_HASH)) return;
 
     c->argv[3] = tryObjectEncoding(c->argv[3]);
-    reply = dict_set(trie->ptr, c->argv[2]->ptr, c->argv[3]) ? \
-            shared.ok : shared.err;
-    incrRefCount(c->argv[3]);
+    if (dict_set(trie->ptr, c->argv[2]->ptr, c->argv[3])) {
+		incrRefCount(c->argv[3]);
+		reply = shared.ok;
+    } else {
+		reply = shared.err;
+    }
     reply_add_obj(c, reply);
 }
 
@@ -82,7 +61,7 @@ static void get_prefix(rr_client_t *c, int flags) {
     array_t *kvs;
     long n = 0, multiplier = 0, i, total;
 
-    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+    if ((trie=rr_db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
         checkType(c, trie, OBJ_HASH)) return;
 
     if (flags & DICT_KEY) multiplier++;
@@ -117,7 +96,7 @@ static void get_all(rr_client_t *c, int flags) {
     array_t *kvs;
     long n = 0, multiplier = 0, i, total;
 
-    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+    if ((trie=rr_db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
         checkType(c, trie, OBJ_HASH)) return;
 
     if (flags & DICT_KEY) multiplier++;
@@ -157,7 +136,7 @@ void rr_cmd_rgetall(rr_client_t *c) {
 void rr_cmd_rdel(rr_client_t *c) {
     robj *reply, *trie, *del;
 
-    if ((trie=db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
+    if ((trie=rr_db_lookup_or_reply(c, c->argv[1], shared.nullbulk)) == NULL ||
         checkType(c, trie, OBJ_HASH)) return;
 
     del = dict_del(trie->ptr, c->argv[2]->ptr);

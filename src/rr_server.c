@@ -11,6 +11,7 @@
 #include "rr_db.h"
 #include "rr_cmd_admin.h"
 #include "rr_cmd_trie.h"
+#include "rr_cmd_heapq.h"
 #include "rr_datetime.h"
 #include "ini.h"
 #include "adlist.h"
@@ -107,7 +108,11 @@ struct redisCommand redisCommandTable[] = {
     {"rvalues",rr_cmd_rvalues,2,"rF",0,NULL,1,1,1,0,0},
     {"rgetall",rr_cmd_rgetall,2,"rF",0,NULL,1,1,1,0,0},
     {"rexists",rr_cmd_rexists,3,"rF",0,NULL,1,-1,1,0,0},
-    /*  {"rgetall",rr_cmd_rgetall,1,"r",0,NULL,0,0,0,0,0}, */
+    {"qpush",rr_cmd_hqpush,4,"wF",0,NULL,1,1,1,0,0},
+    {"qpop",rr_cmd_hqpop,2,"wF",0,NULL,1,1,1,0,0},
+    {"qpopn",rr_cmd_hqpopn,3,"wm",0,NULL,1,1,1,0,0},
+    {"qpeek",rr_cmd_hqpeek,2,"rF",0,NULL,1,1,1,0,0},
+    {"qlen",rr_cmd_hqlen,2,"rF",0,NULL,1,1,1,0,0},
     /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
     {"type",rr_cmd_type,2,"rF",0,NULL,1,1,1,0,0},
     {"ping",rr_cmd_admin_ping,-1,"rtF",0,NULL,0,0,0,0,0},
@@ -857,6 +862,7 @@ rr_client_t *rr_client_create(int fd) {
     c->db = *server.dbs;  /* use db 0 by default */
     c->replied_len = 0;
     c->buf_sent_len = 0;
+    c->buf_offset = 0;
     c->reply = listCreate();
     listSetFreeMethod(c->reply, list_reply_free);
     listSetDupMethod(c->reply, list_reply_dup);

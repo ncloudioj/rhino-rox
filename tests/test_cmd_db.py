@@ -3,30 +3,34 @@ import redis
 
 
 class TestCmdDB(unittest.TestCase):
-    def setUp(self):
-        self.client = redis.Redis("localhost", 6000)
+    rr = redis.Redis("localhost", 6000)
+
+    def tearDown(self):
+        self.rr.execute_command("del foo")
+        self.rr.execute_command("del egg")
+        self.rr.execute_command("del apple")
 
     def test_basic_cmds(self):
-        self.client.set("foo", "bar")
-        self.client.set("egg", "spam")
-        self.client.set("apple", "orange")
-        ret = self.client.execute_command("len")
+        self.rr.set("foo", "bar")
+        self.rr.set("egg", "spam")
+        self.rr.set("apple", "orange")
+        ret = self.rr.execute_command("len")
         self.assertEqual(ret, 3)
 
-        ret = self.client.get("foo")
-        ret = self.client.get("foo")
-        ret = self.client.get("foo")
+        ret = self.rr.get("foo")
+        ret = self.rr.get("foo")
+        ret = self.rr.get("foo")
         self.assertEqual(ret, "bar")
 
-        ret = self.client.type("foo")
+        ret = self.rr.type("foo")
         self.assertEqual(ret, "string")
 
-        ret = self.client.exists("foo")
+        ret = self.rr.exists("foo")
         self.assertTrue(ret)
 
-        self.client.delete("foo")
-        ret = self.client.get("foo")
+        self.rr.delete("foo")
+        ret = self.rr.get("foo")
         self.assertIsNone(ret)
 
-        ret = self.client.exists("foo")
+        ret = self.rr.exists("foo")
         self.assertFalse(ret)

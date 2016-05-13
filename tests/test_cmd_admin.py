@@ -3,20 +3,16 @@ import redis
 
 
 class TestAdminCmd(unittest.TestCase):
-    def setUp(self):
-        self.client = redis.Redis("localhost", 6000)
-
-    def tearDown(self):
-        pass
+    rr = redis.Redis("localhost", 6000)
 
     def test_ping(self):
-        ret = self.client.ping()
+        ret = self.rr.ping()
         self.assertTrue(ret)
 
     def test_echo(self):
-        ret = self.client.echo("echo")
+        ret = self.rr.echo("echo")
         self.assertEqual(ret, "echo")
 
     def test_info(self):
-        info = self.client.info()
+        info = self.rr.info()
         self.assertIsNotNone(info)

@@ -1,11 +1,11 @@
 #include "rr_minheap.h"
 #include "rr_malloc.h"
 
-static void shiftdown(minheap_t *heap, int start, int at);
-static void shiftup(minheap_t *heap, int start);
+static void shiftdown(minheap_t *heap, long start, long at);
+static void shiftup(minheap_t *heap, long start);
 
 struct minheap_t *
-minheap_create(uint32_t n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
+minheap_create(unsigned long n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
     minheap_t *heap;
 
     heap = rr_malloc(sizeof(minheap_t));
@@ -13,6 +13,7 @@ minheap_create(uint32_t n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
     heap->comp = pfcmp;
     heap->cpy = pfcpy;
     heap->swp = pfswp;
+    heap->free_cb = NULL;
     heap->len = 0;
     heap->array = array_create(n, size);
     if (heap->array == NULL) {
@@ -23,7 +24,18 @@ minheap_create(uint32_t n, size_t size, compare pfcmp, copy pfcpy, swap pfswp) {
 }
 
 void
+minheap_set_freecb(minheap_t *heap, minheap_free_callback fn) {
+    heap->free_cb = fn;
+}
+
+void
 minheap_free(minheap_t *heap) {
+    if (heap->free_cb) {
+        unsigned long i;
+        for (i = 0; i < heap->len; i++) {
+            heap->free_cb(ARRAY_AT(heap->array, i));
+        }
+    }
     array_free(heap->array);
     rr_free(heap);
 }
@@ -65,9 +77,9 @@ minheap_min(minheap_t *heap) {
 }
 
 static void
-shiftdown(minheap_t *heap, int start, int end) {
+shiftdown(minheap_t *heap, long start, long end) {
     void *child, *parent;
-    int i;  /* index for the parent */
+    long i;  /* index for the parent */
 
     i = end;
     while (end > start) {
@@ -83,10 +95,10 @@ shiftdown(minheap_t *heap, int start, int end) {
 }
 
 static void
-shiftup(minheap_t *heap, int start) {
-    int iend, istart, ichild, iright;
+shiftup(minheap_t *heap, long start) {
+    long iend, istart, ichild, iright;
 
-    iend = (int)heap->len;
+    iend = (long) heap->len;
     istart = start;
     ichild = 2 * istart + 1;
     while (ichild < iend) {
@@ -102,7 +114,7 @@ shiftup(minheap_t *heap, int start) {
     shiftdown(heap, start, istart);
 }
 
-uint32_t
+unsigned long
 minheap_len(const minheap_t *heap) {
     return heap->len;
 }

@@ -45,13 +45,13 @@ install: $(PROGS)
 
 rhino-rox: rr_server.o rr_logging.o sds.o adlist.o rr_malloc.o rr_event.o rr_array.o \
 	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o rr_config.o rr_bgtask.o ini.o \
-	rr_dict.o robj.o rr_cmd_admin.o rr_cmd_trie.o rr_db.o sha1.o util.o
+	rr_dict.o robj.o rr_cmd_admin.o rr_cmd_trie.o  rr_cmd_heapq.o rr_db.o sha1.o util.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
 
-.PHONY: clean cleanall valgrind
+.PHONY: clean cleanall valgrind debug
 
 clean:
 	rm -rf $(PROGS) *.o
@@ -64,3 +64,7 @@ endif
 valgrind:
 	$(MAKE) OPT="-O0"
 	valgrind --leak-check=yes --log-file=valgrind.log ./rhino-rox
+
+debug:
+	$(MAKE) clean
+	$(MAKE) OPT="-O0"

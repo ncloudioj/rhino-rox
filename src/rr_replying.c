@@ -2,6 +2,7 @@
 #include "rr_logging.h"
 #include "rr_rhino_rox.h"
 #include "rr_malloc.h"
+#include "robj.h"
 #include "util.h"
 
 #include <string.h>
@@ -225,7 +226,7 @@ void reply_add_sds(rr_client_t *c, sds s) {
         sdsfree(s);
     } else {
         /* This method free's the sds when it is no longer needed. */
-        add_reply_sds_to_list(c,s);
+        add_reply_sds_to_list(c, s);
     }
 }
 
@@ -406,148 +407,4 @@ void reply_write_callback(eventloop_t *el, int fd, void *ud, int mask) {
     UNUSED(el);
     UNUSED(mask);
     reply_write_to_client(fd, ud, 1);
-}
-
-int getDoubleFromObject(robj *o, double *target) {
-    double value;
-    char *eptr;
-
-    if (o == NULL) {
-        value = 0;
-    } else {
-        assert(o->type == OBJ_STRING);
-        if (sdsEncodedObject(o)) {
-            errno = 0;
-            value = strtod(o->ptr, &eptr);
-            if (isspace(((char*)o->ptr)[0]) ||
-                eptr[0] != '\0' ||
-                (errno == ERANGE &&
-                    (value == HUGE_VAL || value == -HUGE_VAL || value == 0)) ||
-                errno == EINVAL ||
-                isnan(value))
-                return RR_ERROR;
-        } else if (o->encoding == OBJ_ENCODING_INT) {
-            value = (long) o->ptr;
-        } else {
-            assert(0);
-        }
-    }
-    *target = value;
-    return RR_OK;
-}
-
-int getDoubleFromObjectOrReply(rr_client_t *c, robj *o, double *target, const char *msg) {
-    double value;
-    if (getDoubleFromObject(o, &value) != RR_OK) {
-        if (msg != NULL) {
-            reply_add_err(c,(char*) msg);
-        } else {
-            reply_add_err(c,"value is not a valid float");
-        }
-        return RR_ERROR;
-    }
-    *target = value;
-    return RR_OK;
-}
-
-int getLongDoubleFromObject(robj *o, long double *target) {
-    long double value;
-    char *eptr;
-
-    if (o == NULL) {
-        value = 0;
-    } else {
-        assert(o->type == OBJ_STRING);
-        if (sdsEncodedObject(o)) {
-            errno = 0;
-            value = strtold(o->ptr, &eptr);
-            if (isspace(((char*)o->ptr)[0]) || eptr[0] != '\0' ||
-                errno == ERANGE || isnan(value))
-                return RR_ERROR;
-        } else if (o->encoding == OBJ_ENCODING_INT) {
-            value = (long)o->ptr;
-        } else {
-            rr_log(RR_LOG_ERROR,"Unknown string encoding");
-            return RR_ERROR;
-        }
-    }
-    *target = value;
-    return RR_OK;
-}
-
-int getLongDoubleFromObjectOrReply(rr_client_t *c, robj *o, long double *target, const char *msg) {
-    long double value;
-    if (getLongDoubleFromObject(o, &value) != RR_OK) {
-        if (msg != NULL) {
-            reply_add_err(c,(char*)msg);
-        } else {
-            reply_add_err(c,"value is not a valid float");
-        }
-        return RR_ERROR;
-    }
-    *target = value;
-    return RR_OK;
-}
-
-/* Helper function for getLongLongFromObject(). The function parses the string
- * as a long long value in a strict way (no spaces before/after). On success
- * RR_OK is returned, otherwise RR_ERROR is returned. */
-int strict_strtoll(char *str, long long *vp) {
-    char *eptr;
-    long long value;
-
-    errno = 0;
-    value = strtoll(str, &eptr, 10);
-    if (isspace(str[0]) || eptr[0] != '\0' || errno == ERANGE) return RR_ERROR;
-    if (vp) *vp = value;
-    return RR_OK;
-}
-
-int getLongLongFromObject(robj *o, long long *target) {
-    long long value;
-
-    if (o == NULL) {
-        value = 0;
-    } else {
-        assert(o->type == OBJ_STRING);
-        if (sdsEncodedObject(o)) {
-            if (strict_strtoll(o->ptr,&value) == RR_ERROR) return RR_ERROR;
-        } else if (o->encoding == OBJ_ENCODING_INT) {
-            value = (long)o->ptr;
-        } else {
-            rr_log(RR_LOG_ERROR,"Unknown string encoding");
-        }
-    }
-    if (target) *target = value;
-    return RR_OK;
-}
-
-int getLongLongFromObjectOrReply(rr_client_t *c, robj *o, long long *target, const char *msg) {
-    long long value;
-    if (getLongLongFromObject(o, &value) != RR_OK) {
-        if (msg != NULL) {
-            reply_add_err(c,(char*)msg);
-        } else {
-            reply_add_err(c,"value is not an integer or out of range");
-        }
-        return RR_ERROR;
-    }
-    *target = value;
-    return RR_OK;
-}
-
-int getLongFromObjectOrReply(rr_client_t *c, robj *o, long *target, const char *msg) {
-    long long value;
-
-    if (getLongLongFromObjectOrReply(c, o, &value, msg) != RR_OK) return RR_ERROR;
-    if (value < LONG_MIN || value > LONG_MAX) {
-        if (msg != NULL) {
-            reply_add_err(c,(char*)msg);
-        } else {
-            reply_add_err(c,"value is out of range");
-        }
-        return RR_ERROR;
-    }
-    *target = value;
-    return RR_OK;
 }
