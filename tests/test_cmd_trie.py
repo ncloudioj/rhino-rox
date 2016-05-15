@@ -1,5 +1,6 @@
 import unittest
 import redis
+import random
 
 
 class TestTrieCmd(unittest.TestCase):
@@ -48,3 +49,15 @@ class TestTrieCmd(unittest.TestCase):
 
         ret = self.rr.execute_command("rgetall trie")
         self.assertListEqual(ret, ["ape", "3", "apple", "2", "apply", "1"])
+
+    def test_pressure_test(self):
+        inserted = dict()
+        for i in range(10000):
+            key, val = "%d" % random.randint(1, 1000), "%s" % random.random()
+            self.rr.execute_command("rset trie %s %s" % (key, val))
+            inserted[key] = val
+
+        keys = self.rr.execute_command("rkeys trie")
+        values = self.rr.execute_command("rvalues trie")
+        self.assertSetEqual(set(keys), set(inserted.keys()))
+        self.assertSetEqual(set(values), set(inserted.values()))
