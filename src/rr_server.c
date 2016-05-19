@@ -203,6 +203,7 @@ void rr_server_init(rr_configuration *cfg) {
     server.lazyfree_server_del = cfg->lazyfree_server_del;
     rr_server_adjust_max_clients();
     server.hz = cfg->cron_frequency;
+    server.cronloops = 0;
     server.served = 0;
     server.rejected = 0;
     server.stats_memory_usage = 0;
@@ -413,6 +414,7 @@ static int server_cron(eventloop_t *el, void *ud) {
 
     server.stats_memory_usage = rr_get_used_memory();
 
+    server.cronloops++;
     return 1000/server.hz;
 }
 

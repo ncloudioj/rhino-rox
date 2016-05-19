@@ -31,6 +31,11 @@
 
 #define NET_MAX_WRITES_PER_EVENT (1024*64) /* Max reply size for each EVENT */
 
+/* Using the following macro you can run code inside server_cron() with the
+ * specified period (in milliseconds). Note that the actual resolution depends
+ * on server.hz */
+#define run_with_period(_ms_) if ((_ms_ <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
+
 struct rr_server_t {
     char err[RR_NET_ERR_MAXLEN];       /* buffer for the error message */
     char *pidfile;                     /* pidfile path */
@@ -40,6 +45,7 @@ struct rr_server_t {
     unsigned long served;              /* counter for served clients */
     unsigned long long max_memory;     /* max number of memory bytes to use */
     int hz;                            /* frequency of server cron */
+    int cronloops;
     int lpfd;                          /* file descriptor for the listen socket */
     int lazyfree_server_del;           /* whether or not delete objects lazily */
     int shutdown;                      /* signal server to shutdown */
