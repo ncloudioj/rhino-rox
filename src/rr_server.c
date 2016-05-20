@@ -41,6 +41,7 @@ static void free_client_argv(rr_client_t *c);
 static int cmd_process(rr_client_t *c);
 static void call(rr_client_t *c, int flags);
 static void create_pidfile(void);
+static void set_protocol_error(rr_client_t *c, int pos);
 
 /*
  * Every entry is composed of the following fields:
@@ -493,6 +494,7 @@ static int process_inline_input(rr_client_t *c) {
 
     if (argv == NULL) {
         reply_add_err(c, "Protocol error: unbalanced quotes in request");
+        set_protocol_error(c, 0);
         return RR_ERROR;
     }
 
@@ -516,7 +518,6 @@ static int process_inline_input(rr_client_t *c) {
     rr_free(argv);
     return RR_OK;
 }
-
 
 /* Trims the query buffer to make the function that processes
  * multi bulk requests idempotent */
