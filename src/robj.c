@@ -34,6 +34,7 @@
 #include "rr_logging.h"
 #include "rr_dict.h"
 #include "rr_minheap.h"
+#include "rr_fts.h"
 #include "rr_rhino_rox.h"
 #include "rr_server.h"
 
@@ -221,12 +222,21 @@ robj *createHeapqObject(void) {
     return o;
 }
 
+robj *createFTSObject(void) {
+    fts_t *fts = fts_create();
+    robj *o = createObject(OBJ_FTS, fts);
+    o->encoding = OBJ_ENCODING_FTS;
+    return o;
+}
+
 robj *createCollectionObject(int type) {
     switch(type) {
     case OBJ_HASH:
         return createHashObject();
     case OBJ_HEAPQ:
         return createHeapqObject();
+    case OBJ_FTS:
+        return createFTSObject();
     default:
         rr_log(RR_LOG_ERROR, "Wrong type");
         return NULL;
@@ -255,6 +265,10 @@ void freeHeapqObject(robj *o) {
     minheap_free((minheap_t *) o->ptr);
 }
 
+void freeFTSObject(robj *o) {
+    fts_free((fts_t *) o->ptr);
+}
+
 void incrRefCount(robj *o) {
     if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount++;
 }
@@ -265,6 +279,7 @@ void decrRefCount(robj *o) {
         case OBJ_STRING: freeStringObject(o); break;
         case OBJ_HASH: freeHashObject(o); break;
         case OBJ_HEAPQ: freeHeapqObject(o); break;
+        case OBJ_FTS: freeFTSObject(o); break;
         default: rr_log(RR_LOG_ERROR, "Unknown object type"); break;
         }
         rr_free(o);
@@ -631,6 +646,7 @@ char *strEncoding(int encoding) {
     case OBJ_ENCODING_HT: return "hashtable";
     case OBJ_ENCODING_EMBSTR: return "embstr";
     case OBJ_ENCODING_HEAPQ: return "heapq";
+    case OBJ_ENCODING_FTS: return "fts";
     default: return "unknown";
     }
 }

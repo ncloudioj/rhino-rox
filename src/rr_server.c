@@ -12,7 +12,9 @@
 #include "rr_cmd_admin.h"
 #include "rr_cmd_trie.h"
 #include "rr_cmd_heapq.h"
+#include "rr_cmd_fts.h"
 #include "rr_datetime.h"
+#include "rr_stopwords.h"
 #include "ini.h"
 #include "adlist.h"
 #include "util.h"
@@ -114,6 +116,11 @@ struct redisCommand redisCommandTable[] = {
     {"qpopn",rr_cmd_hqpopn,3,"wm",0,NULL,1,1,1,0,0},
     {"qpeek",rr_cmd_hqpeek,2,"rF",0,NULL,1,1,1,0,0},
     {"qlen",rr_cmd_hqlen,2,"rF",0,NULL,1,1,1,0,0},
+    {"dset",rr_cmd_dset,4,"wm",0,NULL,1,1,1,0,0},
+    {"dget",rr_cmd_dget,3,"rF",0,NULL,1,1,1,0,0},
+    {"ddel",rr_cmd_ddel,3,"wF",0,NULL,1,1,1,0,0},
+    {"dsearch",rr_cmd_dsearch,3,"rF",0,NULL,1,1,1,0,0},
+    {"dlen",rr_cmd_dlen,2,"rF",0,NULL,1,1,1,0,0},
     /*  {"select"lectCommand,2,"rlF",0,NULL,0,0,0,0,0}, */
     {"type",rr_cmd_type,2,"rF",0,NULL,1,1,1,0,0},
     {"ping",rr_cmd_admin_ping,-1,"rtF",0,NULL,0,0,0,0,0},
@@ -238,6 +245,7 @@ void rr_server_init(rr_configuration *cfg) {
     populateCommandTable();
 
     createSharedObjects();
+    rr_stopwords_load();
 
     /* light up background task runners */
     rr_bgt_init();

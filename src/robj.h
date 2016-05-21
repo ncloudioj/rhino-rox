@@ -40,6 +40,7 @@
 #define OBJ_STRING 0
 #define OBJ_HASH 1
 #define OBJ_HEAPQ 2
+#define OBJ_FTS 3
 
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
@@ -49,6 +50,7 @@
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
 #define OBJ_ENCODING_EMBSTR 3  /* Embedded sds string encoding */
 #define OBJ_ENCODING_HEAPQ 4   /* Heap representation */
+#define OBJ_ENCODING_FTS 5     /* FTS (Full Text Searchable) representation */
 
 #define sdsEncodedObject(objptr) (objptr->encoding == OBJ_ENCODING_RAW || objptr->encoding == OBJ_ENCODING_EMBSTR)
 
@@ -106,6 +108,7 @@ robj *resetRefCount(robj *obj);
 void freeStringObject(robj *o);
 void freeHashObject(robj *o);
 void freeHeapqObject(robj *o);
+void freeFTSObject(robj *o);
 robj *createObject(int type, void *ptr);
 robj *createCollectionObject(int type);
 robj *createStringObject(const char *ptr, size_t len);
@@ -121,6 +124,7 @@ robj *createStringObjectFromLongLong(long long value);
 robj *createStringObjectFromLongDouble(long double value, int humanfriendly);
 robj *createHashObject(void);
 robj *createHeapqObject(void);
+robj *createFTSObject(void);
 int getLongLongFromObject(robj *o, long long *target);
 int getDoubleFromObject(robj *o, double *target);
 int getLongDoubleFromObject(robj *o, long double *target);

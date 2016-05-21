@@ -45,7 +45,8 @@ install: $(PROGS)
 
 rhino-rox: rr_server.o rr_logging.o sds.o adlist.o rr_malloc.o rr_event.o rr_array.o \
 	rr_minheap.o rr_datetime.o rr_network.o rr_replying.o rr_config.o rr_bgtask.o ini.o \
-	rr_dict.o robj.o rr_cmd_admin.o rr_cmd_trie.o  rr_cmd_heapq.o rr_db.o sha1.o util.o
+	rr_dict.o robj.o rr_cmd_admin.o rr_cmd_trie.o  rr_cmd_heapq.o rr_cmd_fts.o rr_fts.o \
+	rr_stopwords.o rr_stemmer.o rr_db.o sha1.o util.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(DEPS_LIBS)
 
 %.o: %.c

@@ -47,10 +47,10 @@ void rr_cmd_rset(rr_client_t *c) {
 
     c->argv[3] = tryObjectEncoding(c->argv[3]);
     if (dict_set(trie->ptr, c->argv[2]->ptr, c->argv[3])) {
-		incrRefCount(c->argv[3]);
-		reply = shared.ok;
+        incrRefCount(c->argv[3]);
+        reply = shared.ok;
     } else {
-		reply = shared.err;
+        reply = shared.err;
     }
     reply_add_obj(c, reply);
 }
