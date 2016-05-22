@@ -15,7 +15,7 @@ JEMALLOC_LIB = $(JEMALLOC_DIR)/lib/libjemalloc.a
 JEMALLOC_INC = $(JEMALLOC_DIR)/include/jemalloc
 
 CFLAGS += -I$(JEMALLOC_INC)
-DEPS_LIBS = $(JEMALLOC_LIB) -ldl
+DEPS_LIBS = $(JEMALLOC_LIB) -ldl -lm
 ifeq ($(UNAME_S),Linux)
 	DEPS_LIBS+= -pthread -lrt
 endif

@@ -212,7 +212,6 @@ bool fts_add(fts_t *fts, robj *title, robj *doc) {
         fts_doc_free(dict_del(fts->docs, title->ptr));
         return false;
     }
-    cat_fts_index(fts);
     return true;
 }
 
