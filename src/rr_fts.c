@@ -14,6 +14,8 @@ struct fts_iterator_t {
     minheap_t *docs;
 };
 
+static const char* puncs = ",.:;?!";
+
 typedef struct index_item_t {
     fts_doc_t *doc;  /* pointer of the original document */
     int tf;          /* term frequency */
@@ -90,6 +92,7 @@ static bool fts_index_add(fts_t *fts, fts_doc_t *doc) {
         list *idx;
         listNode *ln;
 
+        term = sdstrim(term, puncs);
         l = sdslen(term);
         if (l == 0 || rr_stopwords_check(term)) {
             sdsfree(term);
@@ -144,6 +147,7 @@ static void fts_index_del(fts_t *fts, fts_doc_t *doc) {
         list *idx;
         listNode *ln;
 
+        term = sdstrim(term, puncs);
         l = sdslen(term);
         if (l == 0 || rr_stopwords_check(term)) {
             sdsfree(term);
@@ -274,6 +278,7 @@ static dict_t *search_with_bm25_score(fts_t *fts, robj *query) {
         sds stemmed = NULL, term = terms[i], s = term;
         list *idx;
 
+        term = sdstrim(term, puncs);
         l = sdslen(term);
         if (l == 0 || rr_stopwords_check(term)) {
             sdsfree(term);

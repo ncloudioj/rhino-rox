@@ -42,7 +42,7 @@ void rr_cmd_dsearch(rr_client_t *c) {
         checkType(c, fts, OBJ_FTS)) return;
 
     iter = fts_search(fts->ptr, c->argv[2], &size);
-    reply_add_multi_bulk_len(c, size);
+    reply_add_multi_bulk_len(c, size * 2);
     while (fts_iter_hasnext(iter)) {
         fts_doc_score_t *fds = fts_iter_next(iter);
         reply_add_bulk_obj(c, fds->doc->title);
