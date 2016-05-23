@@ -94,12 +94,12 @@ static bool fts_index_add(fts_t *fts, fts_doc_t *doc) {
 
         term = sdstrim(term, puncs);
         l = sdslen(term);
+        sdstolower(term);
         if (l == 0 || rr_stopwords_check(term)) {
             sdsfree(term);
             continue;
         }
         nonstopwords++;
-        sdstolower(term);
         /* note that the third argument is a zero-based index */
         k = stem(stmer, term, l-1);
         if (k < l-1) {
@@ -149,11 +149,11 @@ static void fts_index_del(fts_t *fts, fts_doc_t *doc) {
 
         term = sdstrim(term, puncs);
         l = sdslen(term);
+        sdstolower(term);
         if (l == 0 || rr_stopwords_check(term)) {
             sdsfree(term);
             continue;
         }
-        sdstolower(term);
         /* note that the third argument is a zero-based index */
         k = stem(stmer, term, l-1);
         if (k < l-1) {
@@ -177,7 +177,7 @@ static void fts_index_del(fts_t *fts, fts_doc_t *doc) {
     fts->len -= doc->len;
 }
 
-static void cat_fts_index(fts_t *fts) {
+static void fts_cat_index(fts_t *fts) {
     dict_iterator_t *iter;
 
     iter = dict_iter_create(fts->index);
@@ -216,7 +216,7 @@ bool fts_add(fts_t *fts, robj *title, robj *doc) {
 }
 
 fts_doc_t *fts_get(fts_t *fts, robj *title) {
-    return dict_get(fts->docs, title->ptr); 
+    return dict_get(fts->docs, title->ptr);
 }
 
 bool fts_del(fts_t *fts, robj *title) {
@@ -279,11 +279,12 @@ static dict_t *search_with_bm25_score(fts_t *fts, robj *query) {
 
         term = sdstrim(term, puncs);
         l = sdslen(term);
+        sdstolower(term);
         if (l == 0 || rr_stopwords_check(term)) {
             sdsfree(term);
             continue;
         }
-        sdstolower(term);
+
         /* note that the third argument is a zero-based index */
         k = stem(stmer, term, l-1);
         if (k < l-1) {
