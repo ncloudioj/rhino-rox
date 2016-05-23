@@ -78,39 +78,61 @@ void fts_free(fts_t *fts) {
     rr_free(fts);
 }
 
-static bool fts_index_add(fts_t *fts, fts_doc_t *doc) {
-    int i, l, k, len, nonstopwords = 0;
+/* Tokenize a given sds, setting a term to zero-length sds if it's
+ * a stopword. A total number of tokens and total number of nonstopwords
+ * will be returned */
+static sds *sds_tokenize(sds s, int *len, int *nonstopwords) {
+    int i, l, k;
     sds *terms;
     struct stemmer *stmer;
-    sds raw = doc->doc->ptr;
 
-    terms = sdssplitlen(raw, sdslen(raw), " ", 1, &len);
-    if (!terms) return false;
+    *nonstopwords = 0;
+    terms = sdssplitlen(s, sdslen(s), " ", 1, len);
+    if (!terms) return NULL;
     stmer = create_stemmer();
-    for (i = 0; i < len; i++) {
-        sds stemmed = NULL, term = terms[i], s = term;
-        list *idx;
-        listNode *ln;
-
+    for (i = 0; i < *len; i++) {
+        sds stemmed = NULL, term = terms[i];
         term = sdstrim(term, puncs);
         l = sdslen(term);
         sdstolower(term);
         if (l == 0 || rr_stopwords_check(term)) {
-            sdsfree(term);
+            sdsclear(term);
             continue;
         }
-        nonstopwords++;
+        *nonstopwords += 1;
         /* note that the third argument is a zero-based index */
         k = stem(stmer, term, l-1);
         if (k < l-1) {
             stemmed = sdsnewlen(term, k+1);
-            s = stemmed;
+            sdsfree(term);
+            terms[i] = stemmed;
+        }
+    }
+
+    free_stemmer(stmer);
+    return terms;
+}
+
+static bool fts_index_add(fts_t *fts, fts_doc_t *doc) {
+    int i, len, nonstopwords;
+    sds *terms;
+
+    terms = sds_tokenize(doc->doc->ptr, &len, &nonstopwords);
+    if (!terms) return false;
+    for (i = 0; i < len; i++) {
+        sds term = terms[i];
+        list *idx;
+        listNode *ln;
+
+        if (sdslen(term) == 0) {
+            sdsfree(term);
+            continue;
         }
 
-        idx = dict_get(fts->index, s);
+        idx = dict_get(fts->index, term);
         if (!idx) {
             idx = index_list_create();
-            dict_set(fts->index, s, idx);
+            dict_set(fts->index, term, idx);
         }
         ln = listSearchKey(idx, doc);
         if (ln) {
@@ -122,46 +144,31 @@ static bool fts_index_add(fts_t *fts, fts_doc_t *doc) {
             idi->tf = 1;
             listAddNodeHead(idx, idi);
         }
-
-        if (stemmed) sdsfree(stemmed);
         sdsfree(term);
     }
     rr_free(terms);
-    free_stemmer(stmer);
     doc->len = nonstopwords;
     fts->len += doc->len;
     return true;
 }
 
 static void fts_index_del(fts_t *fts, fts_doc_t *doc) {
-    int i, l, k, len;
+    int i, len, nonstopwords;
     sds *terms;
-    struct stemmer *stmer;
-    sds raw = doc->doc->ptr;
 
-    terms = sdssplitlen(raw, sdslen(raw), " ", 1, &len);
+    terms = sds_tokenize(doc->doc->ptr, &len, &nonstopwords);
     if (!terms) return;
-    stmer = create_stemmer();
     for (i = 0; i < len; i++) {
-        sds stemmed = NULL, term = terms[i], s = term;
+        sds term = terms[i];
         list *idx;
         listNode *ln;
 
-        term = sdstrim(term, puncs);
-        l = sdslen(term);
-        sdstolower(term);
-        if (l == 0 || rr_stopwords_check(term)) {
+        if (sdslen(term) == 0) {
             sdsfree(term);
             continue;
         }
-        /* note that the third argument is a zero-based index */
-        k = stem(stmer, term, l-1);
-        if (k < l-1) {
-            stemmed = sdsnewlen(term, k+1);
-            s = stemmed;
-        }
 
-        idx = dict_get(fts->index, s);
+        idx = dict_get(fts->index, term);
         assert(idx);
         ln = listSearchKey(idx, doc);
         assert(ln);
@@ -169,11 +176,9 @@ static void fts_index_del(fts_t *fts, fts_doc_t *doc) {
         idi->tf--;
         if (!idi->tf) listDelNode(idx, ln);
 
-        if (stemmed) sdsfree(stemmed);
         sdsfree(term);
     }
     rr_free(terms);
-    free_stemmer(stmer);
     fts->len -= doc->len;
 }
 
@@ -261,48 +266,34 @@ static void calculate_bm25(fts_t *fts, list *indices, dict_t *scores) {
 }
 
 static dict_t *search_with_bm25_score(fts_t *fts, robj *query) {
-    int i, l, k, len;
+    int i, len, nonstopwords;
     sds *terms;
-    struct stemmer *stmer;
-    sds raw = query->ptr;
     /* dict of (title, fts_doc_score_t) */
     dict_t *scores = dict_create();
     dict_set_freecb(scores, dict_doc_score_free);
     dict_t *queried_terms = dict_create();
 
-    terms = sdssplitlen(raw, sdslen(raw), " ", 1, &len);
+    terms = sds_tokenize(query->ptr, &len, &nonstopwords);
     if (!terms) return scores;
-    stmer = create_stemmer();
     for (i = 0; i < len; i++) {
-        sds stemmed = NULL, term = terms[i], s = term;
+        sds term = terms[i];
         list *idx;
 
-        term = sdstrim(term, puncs);
-        l = sdslen(term);
-        sdstolower(term);
-        if (l == 0 || rr_stopwords_check(term)) {
+        if (sdslen(term) == 0) {
             sdsfree(term);
             continue;
         }
 
-        /* note that the third argument is a zero-based index */
-        k = stem(stmer, term, l-1);
-        if (k < l-1) {
-            stemmed = sdsnewlen(term, k+1);
-            s = stemmed;
-        }
-        if (dict_contains(queried_terms, s)) goto free_sds;
-        dict_set(queried_terms, s, (void *)1);
-        idx = dict_get(fts->index, s);
-        if (!idx) goto free_sds;
+        if (dict_contains(queried_terms, term)) goto free_term;
+        dict_set(queried_terms, term, (void *)1);
+        idx = dict_get(fts->index, term);
+        if (!idx) goto free_term;
         calculate_bm25(fts, idx, scores);
-free_sds:
-        if (stemmed) sdsfree(stemmed);
+free_term:
         sdsfree(term);
     }
     dict_free(queried_terms);
     rr_free(terms);
-    free_stemmer(stmer);
     return scores;
 }
 
