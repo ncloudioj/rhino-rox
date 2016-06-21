@@ -13,6 +13,8 @@
 #endif
 #endif
 
+#include "rr_dict.h"
+
 typedef struct rr_configuration {
     int port;
     char *bind;
@@ -27,6 +29,11 @@ typedef struct rr_configuration {
     int max_dbs;
 } rr_configuration;
 
-int rr_config_load(const char *path, rr_configuration *cfg);
+typedef struct rr_configuration_context {
+    rr_configuration *configs;
+    dict_t           *options;
+} rr_configuration_context;
+
+int rr_config_load(const char *path, rr_configuration_context *cfg);
 
 #endif

@@ -104,29 +104,39 @@ static int handler(void *config,
                    const char *value) {
     char *err;
     char msg[1024];
-    rr_configuration *cfg = (rr_configuration *)config;
+    const char *val;
+    rr_configuration *cfg = ((rr_configuration_context *)config)->configs;
+    dict_t *options = ((rr_configuration_context *)config)->options;
 
+    #define SETVAL(n) do {            \
+        val = dict_get(options, (n)); \
+        val = !val ? value : val;     \
+    } while (0)
     #define MATCH(s,n) (strcmp(section,s) == 0 && strcmp(name,n) == 0)
     if (MATCH("server", "max_clients")) {
-        cfg->max_clients = atoi(value);
+        SETVAL("max_clients");
+        cfg->max_clients = atoi(val);
         if (cfg->max_clients < 0) {
             err = "Invalid value for max_clients";
             goto error;
         }
     } else if (MATCH("server", "cron_frequency")) {
-        cfg->cron_frequency = atoi(value);
+        SETVAL("cron_frequency");
+        cfg->cron_frequency = atoi(val);
         if (cfg->cron_frequency < 0 || cfg->cron_frequency > SERVER_CRON_MAX_FREQUENCY) {
             err = "Invalid value for cron_frequency";
             goto error;
         }
     } else if (MATCH("server", "max_memory")) {
-        cfg->max_memory = memtoll(value, NULL);
+        SETVAL("max_memory");
+        cfg->max_memory = memtoll(val, NULL);
         if (cfg->max_memory < 0) {
             err = "Invalid value for max_memory";
             goto error;
         }
     } else if (MATCH("server", "pidfile")) {
-        cfg->pidfile = rr_strdup(value);
+        SETVAL("pidfile");
+        cfg->pidfile = rr_strdup(val);
         if (cfg->pidfile[0] != '\0') {
             FILE *fp;
 
@@ -140,14 +150,16 @@ static int handler(void *config,
             fclose(fp);
         }
     } else if (MATCH("logging", "log_level")) {
-        if (!cfg_enum_get_value(LOG_LEVEL_ENUM, value, &cfg->log_level)
+        SETVAL("log_level");
+        if (!cfg_enum_get_value(LOG_LEVEL_ENUM, val, &cfg->log_level)
             || cfg->log_level > RR_LOG_CRITICAL
             || cfg->log_level < RR_LOG_DEBUG) {
             err = "Invalid value for log_level";
             goto error;
         }
     } else if (MATCH("logging", "log_file")) {
-        cfg->log_file = rr_strdup(value);
+        SETVAL("log_file");
+        cfg->log_file = rr_strdup(val);
         if (cfg->log_file[0] != '\0') {
             FILE *fp;
 
@@ -161,27 +173,32 @@ static int handler(void *config,
             fclose(fp);
         }
     } else if (MATCH("network", "port")) {
-        cfg->port = atoi(value);
+        SETVAL("port");
+        cfg->port = atoi(val);
         if (cfg->port < 0 || cfg->port > 65535) {
             err = "Invalid value for port";
             goto error;
         }
     } else if (MATCH("network", "bind")) {
-        cfg->bind = rr_strdup(value);
+        SETVAL("bind");
+        cfg->bind = rr_strdup(val);
     } else if (MATCH("network", "tcp_backlog")) {
-        cfg->tcp_backlog = atoi(value);
+        SETVAL("tcp_backlog");
+        cfg->tcp_backlog = atoi(val);
         if (cfg->port < 0) {
             err = "Invalid value for tcp_backlog";
             goto error;
         }
     } else if (MATCH("lazyfree", "server_del")) {
-        cfg->lazyfree_server_del = atoi(value);
+        SETVAL("server_del");
+        cfg->lazyfree_server_del = atoi(val);
         if (cfg->port < 0) {
             err = "Invalid value for server_del";
             goto error;
         }
     } else if (MATCH("database", "max_dbs")) {
-        cfg->max_dbs = atoi(value);
+        SETVAL("max_dbs");
+        cfg->max_dbs = atoi(val);
         if (cfg->port < 0) {
             err = "Invalid value for max_dbs";
             goto error;
@@ -197,6 +214,6 @@ error:
     return 0;
 }
 
-int rr_config_load(const char *path, rr_configuration *cfg) {
+int rr_config_load(const char *path, rr_configuration_context *cfg) {
     return ini_parse(path, handler, cfg) == 0 ? RR_OK : RR_ERROR;
 }

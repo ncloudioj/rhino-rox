@@ -15,6 +15,7 @@
 #include "rr_cmd_fts.h"
 #include "rr_datetime.h"
 #include "rr_stopwords.h"
+#include "rr_dict.h"
 #include "ini.h"
 #include "adlist.h"
 #include "util.h"
@@ -25,6 +26,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <errno.h>
@@ -671,7 +673,7 @@ static int process_multi_bulk_input(rr_client_t *c) {
 }
 
 static void process_user_input(rr_client_t *c) {
-    while (sdslen(c->query)) { 
+    while (sdslen(c->query)) {
         /* CLIENT_CLOSE_AFTER_REPLY closes the connection once the reply is
          * written to the client. Make sure not let the reply grow after
          * this flag has been set (i.e. don't process more commands). */
@@ -692,7 +694,7 @@ static void process_user_input(rr_client_t *c) {
             if (process_multi_bulk_input(c) != RR_OK) break;
         } else {
             rr_log(RR_LOG_WARNING, "Unknown request type");
-            assert(0); 
+            assert(0);
         }
 
         /* Multibulk processing could see a <= 0 length. */
@@ -797,7 +799,7 @@ static void call(rr_client_t *c, int flags) {
 
 /* prepares the client to process the next command */
 void rr_client_reset(rr_client_t *c) {
-    c->req_type = 0; 
+    c->req_type = 0;
     c->multibulk_len = 0;
     c->bulk_len = -1;
     free_client_argv(c);
@@ -974,49 +976,79 @@ static void handle_accept(eventloop_t *el, int fd, void *ud, int mask) {
     }
 }
 
-/* This is a helper function for the OBJECT command. We need to lookup keys
- * without any modification of LRU or other parameters. */
-/*  robj *objectCommandLookup(rr_client_t *c, robj *key) { */
-    /*  dictEntry *de; */
+static void dict_sds_freecb(void *val) {
+    sdsfree((sds) val);
+}
 
-    /*  if ((de = dictFind(c->db->dict,key->ptr)) == NULL) return NULL; */
-    /*  return (robj*) dictGetVal(de); */
-/*  } */
+void version(void) {
+    printf("rhino-rox server v=%s bits=%d\n",
+        "0.0.1",
+        sizeof(long) == 4 ? 32 : 64);
+    exit(0);
+}
 
-/*  robj *objectCommandLookupOrReply(rr_client_t *c, robj *key, robj *reply) { */
-    /*  robj *o = objectCommandLookup(c,key); */
-
-    /*  if (!o) reply_add_obj(c, reply); */
-    /*  return o; */
-/*  } */
-
-/* Object command allows to inspect the internals of an Redis Object.
- * Usage: OBJECT <refcount|encoding|idletime> <key> */
-/*  void objectCommand(rr_client_t *c) { */
-    /*  robj *o; */
-
-    /*  if (!strcasecmp(c->argv[1]->ptr,"refcount") && c->argc == 3) { */
-        /*  if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.nullbulk)) */
-                /*  == NULL) return; */
-        /*  reply_add_longlong(c,o->refcount); */
-    /*  } else if (!strcasecmp(c->argv[1]->ptr,"encoding") && c->argc == 3) { */
-        /*  if ((o = objectCommandLookupOrReply(c,c->argv[2],shared.nullbulk)) */
-                /*  == NULL) return; */
-        /*  reply_add_bulk_cstr(c, strEncoding(o->encoding)); */
-    /*  } else { */
-        /*  reply_add_err(c,"Syntax error. Try OBJECT (refcount|encoding|idletime)"); */
-    /*  } */
-/*  } */
+void usage(void) {
+    printf("Usage: ./rhino-rox [config_file] [option1] [option2]\n");
+    printf("       ./rhino-rox -v or --version\n");
+    printf("       ./rhino-rox -h or --help\n");
+    printf("Examples:\n");
+    printf("       ./rhino-rox --max_memory 1024m\n");
+    printf("       ./rhino-rox /path/to/rhino-rox.ini --max_memory 1024m --max_clients 1024\n");
+    exit(0);
+}
 
 int main(int argc, char *argv[]) {
-    UNUSED(argc);
-    UNUSED(argv);
+    int j;
+    dict_t *options;
+    sds configfile_sds = sdsnew("rhino-rox.ini");
+
+    options = dict_create();
+    dict_set_freecb(options, dict_sds_freecb);
+    if (argc >= 2) {
+        j = 1; /* First option to parse in argv[] */
+        char *option = NULL;
+
+        /* Handle special options --help and --version */
+        if (strcmp(argv[1], "-v") == 0 ||
+            strcmp(argv[1], "--version") == 0) version();
+        if (strcmp(argv[1], "--help") == 0 ||
+            strcmp(argv[1], "-h") == 0) usage();
+
+        /* First argument is the config file name? */
+        if (argv[j][0] != '-' || argv[j][1] != '-') {
+            sdsfree(configfile_sds);
+            configfile_sds = getAbsolutePath(argv[j]);
+            j++;
+        }
+
+        /* All the other options are parsed and added to options dict
+         * For instance --port 6380 will generate the key "port" and value
+         * string "port 6380\n" to be parsed. This option will overwrite
+         * the counterpart in the configuration file.
+         * */
+        while(j != argc) {
+            if (argv[j][0] == '-' && argv[j][1] == '-') {
+                /* Option name */
+                option = argv[j]+2;
+            } else {
+                /* Option argument */
+                if (!option) usage();
+                dict_set(options, option, sdsnew(argv[j]));
+                option = NULL;
+            }
+            j++;
+        }
+    } else {
+        rr_log(RR_LOG_INFO, "Warning: no config file specified, using the default one. Use %s /path/to/%s.ini to specify the config file.", argv[0], "rhino-rox");
+    }
 
     rr_configuration cfg;
-    if (rr_config_load("rhino-rox.ini", &cfg) == RR_ERROR) {
+    rr_configuration_context cfg_context = {.configs = &cfg, .options = options};
+    if (rr_config_load(configfile_sds, &cfg_context) == RR_ERROR) {
         rr_log(RR_LOG_CRITICAL, "Failed to load the config file");
         exit(1);
     }
+    dict_free(options);
     rr_server_init(&cfg);
     el_main(server.el);
     rr_server_close();
