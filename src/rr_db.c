@@ -180,6 +180,7 @@ void rr_cmd_type(struct rr_client_t *c) {
         case OBJ_STRING: type = "string"; break;
         case OBJ_HASH: type = "trie"; break;
         case OBJ_HEAPQ: type = "heapq"; break;
+        case OBJ_FTS: type = "fts"; break;
         default: type = "unknown"; break;
         }
     }
