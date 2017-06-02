@@ -32,6 +32,13 @@ void rr_bgt_init(void) {
     pthread_attr_t attr;
     size_t stacksize;
 
+    /* Initialization of state vars and objects */
+    for (i = 0; i < TASK_NTYPES; i++) {
+        pthread_mutex_init(locks+i, NULL);
+        pthread_cond_init(cons+i, NULL);
+        tasks[i] = listCreate();
+    }
+
     pthread_attr_init(&attr);
     pthread_attr_getstacksize(&attr, &stacksize);
     if (!stacksize) stacksize = 1;
@@ -45,9 +52,6 @@ void rr_bgt_init(void) {
             rr_log(RR_LOG_CRITICAL, "Can not create thread for the background tasks");
             exit(1);
         }
-        pthread_mutex_init(locks+i, NULL);
-        pthread_cond_init(cons+i, NULL);
-        tasks[i] = listCreate();
     }
 }
 
