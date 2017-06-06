@@ -813,8 +813,22 @@ static void handle_read_from_client(eventloop_t *el, int fd, void *ud, int mask)
     UNUSED(el);
     UNUSED(mask);
 
-    qlen = sdslen(c->query);
     readlen = PROTO_IOBUF_LEN;
+    /* If this is a multi bulk request, and we are processing a bulk reply
+     * that is large enough, try to maximize the probability that the query
+     * buffer contains exactly the SDS string representing the object, even
+     * at the risk of requiring more read(2) calls. This way the function
+     * process_multi_bulk_input() can avoid copying buffers to create the
+     * Redis Object representing the argument. */
+    if (c->req_type == PROTO_REQ_MULTIBULK && c->multibulk_len && c->bulk_len != -1
+        && c->bulk_len >= PROTO_MBULK_BIG_ARG)
+    {
+        int remaining = (unsigned)(c->bulk_len+2) - sdslen(c->query);
+
+        if (remaining < readlen) readlen = remaining;
+    }
+
+    qlen = sdslen(c->query);
     c->query = sdsMakeRoomFor(c->query, readlen);
     nread = read(fd, c->query+qlen, readlen);
     if (nread == -1) {
