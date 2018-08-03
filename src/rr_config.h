@@ -14,6 +14,7 @@
 #endif
 
 #include "rr_dict.h"
+#include <sys/types.h>
 
 typedef struct rr_configuration {
     int port;
@@ -24,6 +25,8 @@ typedef struct rr_configuration {
     int log_level;
     char *log_file;
     char *pidfile;
+    char *unix_domain_sock;
+    mode_t unix_sock_perm;
     int tcp_backlog;
     int lazyfree_server_del;
     int max_dbs;

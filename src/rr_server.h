@@ -28,6 +28,7 @@
                                        handler is yet not installed. */
 #define CLIENT_CLOSE_AFTER_REPLY (1<<2) /* close once complete the entire reply */
 #define CLIENT_CLOSE_ASAP (1<<3)        /* close client ASAP */
+#define CLIENT_UNIX_SOCKET (1<<11)      /* client connected via Unix domain socket */
 
 #define NET_MAX_WRITES_PER_EVENT (1024*64) /* Max reply size for each EVENT */
 
@@ -47,6 +48,8 @@ struct rr_server_t {
     int hz;                            /* frequency of server cron */
     int cronloops;
     int lpfd;                          /* file descriptor for the listen socket */
+    char *unix_socket_sock;            /* unix domain socket path */
+    int unix_domain_sockfd;            /* file descriptor for the unix domain socket */
     int lazyfree_server_del;           /* whether or not delete objects lazily */
     int shutdown;                      /* signal server to shutdown */
     size_t client_max_query_len;       /* max length for client query buffer */

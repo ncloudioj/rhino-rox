@@ -38,6 +38,7 @@ struct rr_server_t server;
 static int server_cron(eventloop_t *el, void *ud);
 static void before_polling(eventloop_t *el);
 static void handle_accept(eventloop_t *el, int fd, void *ud, int mask);
+static void handle_unix_domain_sock_accept(eventloop_t *el, int fd, void *ud, int mask);
 static void add_client(int fd, int flags, char *ip);
 static void free_client_async(rr_client_t *c);
 static void handle_async_freed_clients(void);
@@ -221,11 +222,26 @@ void rr_server_init(rr_configuration *cfg) {
     if ((server.el = el_loop_create(server.max_clients)) == NULL) goto error;
     server.lpfd = rr_net_tcpserver(
             server.err, cfg->port, cfg->bind, AF_INET, cfg->tcp_backlog);
-    if (server.lpfd == RR_EV_ERR) goto error;
-    if (rr_net_nonblock(server.err, server.lpfd) == RR_ERROR) goto error;
+    if (server.lpfd == RR_NET_ERR) goto error;
+    if (rr_net_nonblock(server.err, server.lpfd) == RR_NET_ERR) goto error;
     if (el_event_add(server.el, server.lpfd, RR_EV_READ, handle_accept, NULL)
           == RR_EV_ERR)
         goto error;
+
+    /* open the listening Unix domain socket. */
+    if (cfg->unix_domain_sock[0] != '\0') {
+        unlink(cfg->unix_domain_sock);
+        server.unix_socket_sock = rr_strdup(cfg->unix_domain_sock);
+        server.unix_domain_sockfd = rr_net_unixserver(
+            server.err, cfg->unix_domain_sock, cfg->unix_sock_perm, cfg->tcp_backlog);
+        if (server.unix_domain_sockfd == RR_NET_ERR)
+            goto error;
+        if (rr_net_nonblock(server.err, server.unix_domain_sockfd) == RR_NET_ERR)
+            goto error;
+        if (el_event_add(server.el, server.unix_domain_sockfd, RR_EV_READ, handle_unix_domain_sock_accept, NULL)
+              == RR_EV_ERR)
+            goto error;
+    }
 
     if (el_timer_add(server.el, 1, server_cron, NULL) == RR_EV_ERR) {
         rr_log(RR_LOG_CRITICAL, "Can't create event loop timers.");
@@ -872,10 +888,14 @@ rr_client_t *rr_client_create(int fd) {
     }
 
     if (fd != -1) {
-        if (rr_net_nonblock(server.err, fd) != RR_NET_OK) goto error;
-        if (rr_net_nodelay(server.err, fd) != RR_NET_OK) goto error;
-        if (rr_net_keepalive(server.err, fd) != RR_NET_OK) goto error;
-        if (el_event_add(server.el, fd, RR_EV_READ, handle_read_from_client, c) == RR_EV_ERR) goto error;
+        rr_net_nonblock(server.err, fd);
+        rr_net_nodelay(server.err, fd);
+        rr_net_keepalive(server.err, fd);
+        if (el_event_add(server.el, fd, RR_EV_READ, handle_read_from_client, c) == RR_EV_ERR) {
+            close(fd);
+            rr_free(c);
+            return NULL;
+        }
     }
 
     c->fd = fd;
@@ -896,9 +916,6 @@ rr_client_t *rr_client_create(int fd) {
     c->flags = 0;
     if (fd != -1) listAddNodeTail(server.clients, c);
     return c;
-error:
-    rr_free(c);
-    return NULL;
 }
 
 static void unlink_client(rr_client_t *c) {
@@ -987,6 +1004,24 @@ static void handle_accept(eventloop_t *el, int fd, void *ud, int mask) {
         }
         rr_log(RR_LOG_INFO, "Accepted %s:%d", cip, cport);
         add_client(cfd, 0, cip);
+    }
+}
+
+static void handle_unix_domain_sock_accept(eventloop_t *el, int fd, void *ud, int mask) {
+    int cfd, max = RR_NET_MAXACCEPT;
+    UNUSED(el);
+    UNUSED(mask);
+    UNUSED(ud);
+
+    while(max--) {
+        cfd = rr_unix_accept(server.err, fd);
+        if (cfd == RR_NET_ERR) {
+            if (errno != EWOULDBLOCK)
+                rr_log(RR_LOG_WARNING, "Accepting client connection: %s", server.err);
+            return;
+        }
+        rr_log(RR_LOG_INFO, "Accepted connection to %s", server.unix_socket_sock);
+        add_client(cfd, CLIENT_UNIX_SOCKET, NULL);
     }
 }
 

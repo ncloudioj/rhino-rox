@@ -149,6 +149,18 @@ static int handler(void *config,
             }
             fclose(fp);
         }
+    } else if (MATCH("server", "unix_domain_socket")) {
+        SETVAL("unix_domain_socket");
+        cfg->unix_domain_sock = rr_strdup(val);
+        rr_log(RR_LOG_WARNING, "%s", cfg->unix_domain_sock);
+    } else if (MATCH("server", "unix_domain_perm")) {
+        SETVAL("unix_sock_perm");
+        errno = 0;
+        cfg->unix_sock_perm = (mode_t) strtol(val, NULL, 8);
+        if (errno || cfg->unix_sock_perm > 0777) {
+            err = "Invalid socket file permissions";
+            goto error;
+        }
     } else if (MATCH("logging", "log_level")) {
         SETVAL("log_level");
         if (!cfg_enum_get_value(LOG_LEVEL_ENUM, val, &cfg->log_level)

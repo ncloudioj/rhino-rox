@@ -11,7 +11,9 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <netinet/tcp.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -129,6 +131,16 @@ int rr_net_accept(char *err, int socket, char *ip, size_t ip_len, int *port) {
     return fd;
 }
 
+int rr_unix_accept(char *err, int socket) {
+    int fd;
+    struct sockaddr_un sa;
+    socklen_t salen = sizeof(sa);
+    if ((fd = rr_net_generic_accpet(err, socket, (struct sockaddr*)&sa, &salen)) == -1)
+        return RR_NET_ERR;
+
+    return fd;
+}
+
 int rr_net_tcpserver(char *err, int port, char *bindaddr, int af, int backlog) {
     int s, error;
     char _port[6];  /* strlen("65535") */
@@ -163,5 +175,28 @@ error:
     s = RR_NET_ERR;
 end:
     freeaddrinfo(servinfo);
+    return s;
+}
+
+int rr_net_unixserver(char *err, char *path, mode_t perm, int backlog) {
+    int s;
+    struct sockaddr_un sa;
+
+    if ((s = socket(AF_LOCAL, SOCK_STREAM, 0)) == -1) {
+        rr_net_error(err, "creating unix domain socket: %s", strerror(errno));
+        return RR_NET_ERR;
+    }
+
+    if (rr_net_reuseaddr(err,s) == RR_NET_ERR) {
+        close(s);
+        return RR_NET_ERR;
+    }
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_LOCAL;
+    strncpy(sa.sun_path, path, sizeof(sa.sun_path)-1);
+    if (rr_net_listen(err, s, (struct sockaddr*)&sa, sizeof(sa), backlog) == RR_NET_ERR)
+        return RR_NET_ERR;
+    if (perm) chmod(sa.sun_path, perm);
     return s;
 }
