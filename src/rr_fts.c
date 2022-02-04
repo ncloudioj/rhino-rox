@@ -192,7 +192,7 @@ static void fts_cat_index(fts_t *fts) {
         list *l = kv.value;
         listIter *liter = listGetIterator(l, AL_START_HEAD);
         listNode *node;
-        
+
         while((node = listNext(liter)) != NULL) {
             index_item_t *item = node->value;
             rr_debug("doc title: %s, tf: %d",
@@ -331,7 +331,7 @@ static struct fts_iterator_t *create_fts_iterator(unsigned long size) {
 }
 
 struct fts_iterator_t *fts_search(fts_t *fts, robj *query, unsigned long *size) {
-    dict_t * scores = search_with_bm25_score(fts, query);
+    dict_t *scores = search_with_bm25_score(fts, query);
     *size = dict_length(scores);
     struct fts_iterator_t *it = create_fts_iterator(*size);
     dict_iterator_t *dict_it = dict_iter_create(scores);
